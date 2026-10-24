@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openStore, type Store } from "../src/client/storage";
 import { SyncEngine } from "../src/client/sync";
 import { type Entry, materialize } from "../src/shared/model";
@@ -173,4 +173,69 @@ describe("sync protocol", () => {
     );
     await expect(engine.run()).rejects.toThrow();
   });
+});
+
+it("persists an ordered group atomically and notifies once", async () => {
+  const s = await store();
+  let notifications = 0;
+  s.subscribe(() => {
+    notifications++;
+  });
+  const edits = await s.writeBatch([
+    { kind: "entry", key, value: empty, parents: [] },
+    { kind: "entry", key: "other/2026-10-24/default", value: empty, parents: [] },
+  ]);
+  expect(await s.pending()).toHaveLength(2);
+  expect(await s.list()).toHaveLength(2);
+  expect(notifications).toBe(1);
+  expect(edits).toHaveLength(2);
+});
+it("rejects invalid grouped edits without persisting an earlier valid edit", async () => {
+  const s = await store();
+  await expect(
+    s.writeBatch([
+      { kind: "entry", key, value: empty, parents: [] },
+      {
+        kind: "entry",
+        key: "other/2026-10-24/default",
+        value: { ...empty, state: "invalid" } as unknown as Entry,
+        parents: [],
+      },
+    ]),
+  ).rejects.toThrow();
+  expect(await s.list()).toEqual([]);
+});
+it("rolls back a grouped edit when browser storage fails midway", async () => {
+  const s = await store();
+  const original = IDBObjectStore.prototype.put;
+  let writes = 0;
+  const spy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+    this: IDBObjectStore,
+    value: unknown,
+    key?: IDBValidKey,
+  ) {
+    if (++writes === 2) throw new DOMException("Storage full", "QuotaExceededError");
+    return original.call(this, value, key);
+  });
+  try {
+    await expect(
+      s.writeBatch([
+        { kind: "entry", key, value: empty, parents: [] },
+        { kind: "entry", key: "other/2026-10-24/default", value: empty, parents: [] },
+      ]),
+    ).rejects.toThrow("Storage full");
+  } finally {
+    spy.mockRestore();
+  }
+  expect(await s.list()).toEqual([]);
+});
+it("preserves concurrent metadata through a group's observed parents", async () => {
+  const s = await store();
+  const first = await s.write("entry", key, empty);
+  await s.write("entry", key, { ...empty, state: "skipped" });
+  const [edit] = await s.writeBatch([
+    { kind: "entry", key, value: { ...empty, state: "confirmed" }, parents: [first.id] },
+  ]);
+  expect(edit.parents).toEqual([first.id]);
+  expect(materialize(await s.list()).get(`entry/${key}`)?.conflict).toBe(true);
 });

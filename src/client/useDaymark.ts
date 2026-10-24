@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heads, type Kind, type Operation, type Value } from "../shared/model";
 import { type Account, api } from "./api";
-import { openStore, type Store } from "./storage";
+import { type LocalChange, openStore, type Store } from "./storage";
 import { SyncEngine, type SyncState } from "./sync";
 
 const ACCOUNT_KEY = "daymark-last-account-v1";
@@ -130,14 +130,31 @@ export function useDaymark() {
       opened?.close();
     };
   }, [account?.id, account, refresh]);
-  const save = async (kind: Kind, key: string, value: Value, parents?: string[]) => {
-    if (!store || store.accountId !== account?.id || snapshot.accountId !== account.id)
+  const readyStore = () => {
+    if (
+      !store ||
+      store.accountId !== account?.id ||
+      snapshot.accountId !== account.id ||
+      activeAccount.current !== account.id
+    )
       throw new Error("Browser storage is not ready for this account");
+    return store;
+  };
+  const saveBatch = async (changes: LocalChange[]) => {
+    const target = readyStore();
+    const edits = await target.writeBatch(changes);
+    await refresh(target);
+    void engine.current?.refreshPending();
+    if (navigator.onLine) void engine.current?.run().catch(() => {});
+    return edits;
+  };
+  const save = async (kind: Kind, key: string, value: Value, parents?: string[]) => {
+    const target = readyStore();
     const observed =
       parents ??
       heads(operations.filter((op) => op.kind === kind && op.key === key)).map((op) => op.id);
-    const op = await store.write(kind, key, value, observed);
-    await refresh(store);
+    const op = await target.write(kind, key, value, observed);
+    await refresh(target);
     void engine.current?.refreshPending();
     if (navigator.onLine) void engine.current?.run().catch(() => {});
     return op;
@@ -173,6 +190,7 @@ export function useDaymark() {
     setFailure,
     registrationOpen,
     save,
+    saveBatch,
     signIn,
     signOut,
     synchronize: () => engine.current?.run(),

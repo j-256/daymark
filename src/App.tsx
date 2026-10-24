@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { message } from "./client/api";
 import { applyAppearance, preference, THEME_KEY } from "./client/appearance";
+import { type MoveDirection, reorderChanges } from "./client/ordering";
 import { useDaymark } from "./client/useDaymark";
 import { Admin } from "./components/Admin";
 import { Conflicts } from "./components/Conflicts";
@@ -53,6 +54,7 @@ export function App() {
   const [archived, setArchived] = useState(false);
   const [category, setCategory] = useState("");
   const [busy, setBusy] = useState("");
+  const [orderingBusy, setOrderingBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const records = useMemo(() => materialize(daymark.operations), [daymark.operations]);
   const conflicts = [...records.values()].filter((record) => record.conflict);
@@ -182,6 +184,25 @@ export function App() {
       notify(message(e));
     }
   };
+  const moveTracker = async (id: string, direction: MoveDirection) => {
+    if (orderingBusy) return;
+    const changes = reorderChanges(
+      allTrackers.filter((item) => item.value.archived === archived),
+      id,
+      direction,
+    );
+    if (!changes.length) return;
+    const name = allTrackers.find((item) => item.id === id)?.value.name ?? "Tracker";
+    setOrderingBusy(true);
+    try {
+      await daymark.saveBatch(changes);
+      notify(`${name} moved ${direction}`);
+    } catch (error) {
+      notify(`Order not saved: ${message(error)}`);
+    } finally {
+      setOrderingBusy(false);
+    }
+  };
   const syncLabel = !daymark.online
     ? `Offline${daymark.sync.pending ? ` / ${daymark.sync.pending}` : ""}`
     : daymark.sync.status === "synced"
@@ -302,6 +323,8 @@ export function App() {
                   add={() => setTrackerEdit("new")}
                   edit={setTrackerEdit}
                   update={updateTracker}
+                  move={moveTracker}
+                  moving={orderingBusy}
                 />
                 <label className="check-label">
                   <input

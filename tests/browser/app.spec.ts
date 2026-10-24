@@ -254,18 +254,36 @@ test("counts an earlier completion toward an any-day weekly chore", async ({ pag
   await expect(quick(page, "Change sheets")).toHaveAttribute("data-state", "confirmed");
   await expect(page.locator(".summary strong")).toHaveText("1/1");
 });
-test("lets the owner of a tracker change its quick-list order", async ({ page, request }) => {
+test("reorders directly with up and down controls and retains an offline move after reload", async ({
+  page,
+  request,
+}) => {
   await signIn(page, await newAccount(request));
   await createTracker(page, "First");
   await createTracker(page, "Second");
+  await createTracker(page, "Third");
+  await expect(page.getByTestId("sync-status")).toHaveText(/Synced/);
+  await page.evaluate(() => navigator.serviceWorker.ready);
   await page.getByRole("button", { name: "Trackers", exact: true }).click();
-  await page.getByRole("button", { name: "Edit Second", exact: true }).click();
-  await page.getByLabel("Quick-list order", { exact: true }).fill("-1");
-  await page.getByRole("button", { name: "Save tracker", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await page.getByRole("button", { name: "Reorder trackers", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Move First up", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Move Third down", exact: true })).toBeDisabled();
+  await page.context().setOffline(true);
+  await page.getByRole("button", { name: "Move Second up", exact: true }).click();
+  await expect(page.locator(".tracker-row").first()).toContainText("Second");
+  await page.reload();
   await expect(page.locator(".log-row").first()).toContainText("Second");
+  await page.context().setOffline(false);
+  await expect(page.getByTestId("sync-status")).toHaveText(/Synced/);
+  await page.getByRole("button", { name: "Trackers", exact: true }).click();
+  await page.getByRole("button", { name: "Reorder trackers", exact: true }).click();
+  await page.getByRole("button", { name: "Move Second down", exact: true }).click();
+  await expect(page.locator(".tracker-row").first()).toContainText("First");
+  await page.getByRole("button", { name: "Done reordering", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Second", exact: true }).click();
+  await expect(page.getByLabel("Quick-list order", { exact: true })).toHaveCount(0);
 });
+
 test("shows times and slot identity before choosing a conflicting entry", async ({
   page,
   request,
@@ -398,12 +416,20 @@ test("opens weekly day details directly and shows notes and tracker extras once"
   await page.getByRole("button", { name: "Details for Pills / Morning", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("After breakfast");
   await expect(page.getByRole("dialog")).toContainText("After swimming");
+  let dateWrites = 0;
+  const trackDateWrites = (request: import("@playwright/test").Request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/sync")
+      dateWrites++;
+  };
+  page.on("request", trackDateWrites);
   await page.getByLabel("History date", { exact: true }).fill("2026-10-23");
   await expect(page.getByRole("dialog")).toContainText("After dinner");
   await expect(page.getByRole("dialog")).toContainText("Retired slot");
   await page.getByLabel("History date", { exact: true }).fill("2026-10-25");
   await expect(page.getByLabel("History date", { exact: true })).toHaveValue("2026-10-23");
   await expect(page.getByRole("dialog")).not.toContainText("After swimming");
+  expect(dateWrites).toBe(0);
+  page.off("request", trackDateWrites);
   await page.getByRole("button", { name: "Edit Evening", exact: true }).click();
   await expect(page.getByLabel("Date", { exact: true })).toHaveValue("2026-10-23");
   await page.getByRole("textbox", { name: "Notes", exact: true }).fill("Dinner note updated");
@@ -455,4 +481,68 @@ test("scopes pattern totals and gaps to the selected range with named slot break
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     ).toBeTruthy();
   }
+});
+
+test("preserves remote tracker settings as a conflict when another device reorders offline", async ({
+  browser,
+  request,
+}) => {
+  const email = await newAccount(request);
+  const a = await client(browser, email);
+  await createTracker(a.page, "First");
+  await createTracker(a.page, "Second");
+  await expect(a.page.getByTestId("sync-status")).toHaveText(/Synced/);
+  const b = await client(browser, email);
+  await expect(quick(b.page, "Second")).toBeVisible();
+  await a.context.setOffline(true);
+  await a.page.getByRole("button", { name: "Trackers", exact: true }).click();
+  await a.page.getByRole("button", { name: "Reorder trackers", exact: true }).click();
+  await a.page.getByRole("button", { name: "Move Second up", exact: true }).click();
+  await expect(a.page.locator(".tracker-row").first()).toContainText("Second");
+  await b.page.getByRole("button", { name: "Trackers", exact: true }).click();
+  await b.page.getByRole("button", { name: "Edit Second", exact: true }).click();
+  await b.page.getByLabel("Category", { exact: true }).fill("Work");
+  await b.page.getByRole("button", { name: "Save tracker", exact: true }).click();
+  await expect(b.page.locator(".tracker-row").filter({ hasText: "Second" })).toContainText("Work");
+  await expect(b.page.getByTestId("sync-status")).toHaveText(/Synced/);
+  await a.context.setOffline(false);
+  await a.page.getByRole("button", { name: /Review.*conflict/i }).click();
+  await expect(a.page.getByRole("dialog")).toContainText("Work");
+  await expect(a.page.getByRole("button", { name: "Keep Second", exact: true })).toHaveCount(2);
+  await a.context.close();
+  await b.context.close();
+});
+
+test("keeps long tracker names, slots, and notes inside a narrow history sheet", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await signIn(page, await newAccount(request));
+  const name = "VeryLongTrackerName".repeat(4);
+  const tracker = fixtureTracker(name);
+  (tracker.value as Tracker).slots = [{ id: "default", name: "LongSlotName".repeat(3), time: "" }];
+  const note = "UnbrokenNote".repeat(25);
+  await seed(page, [
+    tracker,
+    {
+      id: crypto.randomUUID(),
+      kind: "entry",
+      key: `${tracker.key}/${today()}/default`,
+      parents: [],
+      createdAt: new Date().toISOString(),
+      value: { state: "confirmed", note, occurredAt: null },
+    },
+  ]);
+  await page.getByRole("button", { name: "Weeks", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: `Details for ${name} / ${(tracker.value as Tracker).slots[0].name}`,
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(note);
+  expect(
+    await page.getByRole("dialog").evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
+  ).toBeTruthy();
 });

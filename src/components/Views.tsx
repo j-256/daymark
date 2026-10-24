@@ -1,6 +1,16 @@
-import { Archive, ChevronLeft, ChevronRight, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  MoreHorizontal,
+  Plus,
+  RotateCcw,
+  StickyNote,
+} from "lucide-react";
 import { useState } from "react";
-import { extraRecords } from "../client/history";
+import type { MoveDirection } from "../client/ordering";
 import {
   dayDistance,
   due,
@@ -221,6 +231,19 @@ export function Weeks({
   const [start, setStart] = useState(weekStart(today));
   const [count, setCount] = useState(1);
   const [selected, setSelected] = useState(today);
+  const extrasByDay = new Map<string, number>();
+  for (const record of records.values()) {
+    if (record.kind !== "event" || !record.value) continue;
+    const value = record.value as ExtraEvent;
+    if (!value.deleted) {
+      const key = `${value.trackerId}/${value.day}`;
+      extrasByDay.set(key, (extrasByDay.get(key) ?? 0) + 1);
+    }
+  }
+  const firstSlot = new Map<string, string>();
+  for (const row of rows)
+    if (!firstSlot.has(row.trackerId)) firstSlot.set(row.trackerId, row.slot.id);
+
   const range = (day: string) => {
     const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
     return `${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, options)} - ${new Date(`${shiftDay(day, 6)}T12:00:00`).toLocaleDateString(undefined, options)}`;
@@ -284,6 +307,11 @@ export function Weeks({
           <StatusIcon state="skipped" />
           Skipped
         </span>
+        <span>
+          <StickyNote />
+          Note
+        </span>
+        <span>+n Extra logs</span>
       </div>
       {!rows.length && <p className="empty">Add a tracker to start your history.</p>}
       {Array.from({ length: count }, (_, week) => {
@@ -347,10 +375,8 @@ export function Weeks({
                           (entryRecord(records, row, day)?.value as Entry | null)?.note,
                         )}
                         extraCount={
-                          rows.find((item) => item.trackerId === row.trackerId) === row
-                            ? extraRecords(records, row.trackerId, day).filter(
-                                (record) => !record.conflict,
-                              ).length
+                          firstSlot.get(row.trackerId) === row.slot.id
+                            ? (extrasByDay.get(`${row.trackerId}/${day}`) ?? 0)
                             : 0
                         }
                         state={state}
@@ -383,17 +409,34 @@ export function Trackers({
   add,
   edit,
   update,
+  move,
+  moving,
 }: {
   items: TrackerItem[];
   archived: boolean;
   add: () => void;
   edit: (item: TrackerItem) => void;
   update: (item: TrackerItem, patch: Partial<Tracker>) => Promise<void>;
+  move: (id: string, direction: MoveDirection) => Promise<void>;
+  moving: boolean;
 }) {
+  const [reordering, setReordering] = useState(false);
   return (
     <>
       <div className="page-title">
         <h1>{archived ? "Archived" : "Trackers"}</h1>
+        {(items.length > 1 || reordering) && (
+          <button
+            className="text-button reorder-toggle"
+            type="button"
+            aria-label={reordering ? "Done reordering" : "Reorder trackers"}
+            aria-pressed={reordering}
+            disabled={moving}
+            onClick={() => setReordering((value) => !value)}
+          >
+            {reordering ? "Done" : "Reorder"}
+          </button>
+        )}
         <button type="button" className="text-button" onClick={add}>
           <Plus />
           Add tracker
@@ -406,33 +449,60 @@ export function Trackers({
             : "Add your first tracker. You can change its schedule and time slots later."}
         </p>
       )}
-      {items.map((item) => (
-        <div className="tracker-row" key={item.id}>
-          <button type="button" className="item-copy" onClick={() => edit(item)}>
-            <span className="item-name">{item.value.name}</span>
-            <span className="item-meta">
-              {item.value.category} / {item.value.slots.length} slot
-              {item.value.slots.length === 1 ? "" : "s"} / {item.value.schedule}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={`${archived ? "Restore" : "Archive"} ${item.value.name}`}
-            onClick={() => void update(item, { archived: !archived })}
-          >
-            {archived ? <RotateCcw /> : <Archive />}
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={`Edit ${item.value.name}`}
-            onClick={() => edit(item)}
-          >
-            <MoreHorizontal />
-          </button>
-        </div>
-      ))}
+      <ol className="tracker-list" aria-busy={moving}>
+        {items.map((item, index) => (
+          <li className="tracker-row" key={item.id}>
+            <button type="button" className="item-copy" onClick={() => edit(item)}>
+              <span className="item-name">{item.value.name}</span>
+              <span className="item-meta">
+                {item.value.category} / {item.value.slots.length} slot
+                {item.value.slots.length === 1 ? "" : "s"} / {item.value.schedule}
+              </span>
+            </button>
+            {reordering ? (
+              <>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Move ${item.value.name} up`}
+                  disabled={moving || index === 0}
+                  onClick={() => void move(item.id, "up")}
+                >
+                  <ArrowUp />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Move ${item.value.name} down`}
+                  disabled={moving || index === items.length - 1}
+                  onClick={() => void move(item.id, "down")}
+                >
+                  <ArrowDown />
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`${archived ? "Restore" : "Archive"} ${item.value.name}`}
+                  onClick={() => void update(item, { archived: !archived })}
+                >
+                  {archived ? <RotateCcw /> : <Archive />}
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Edit ${item.value.name}`}
+                  onClick={() => edit(item)}
+                >
+                  <MoreHorizontal />
+                </button>
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
     </>
   );
 }

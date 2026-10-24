@@ -11,6 +11,12 @@ interface Schema extends DBSchema {
   operations: { key: string; value: Stored };
   meta: { key: string; value: number };
 }
+export interface LocalChange {
+  kind: Kind;
+  key: string;
+  value: Value;
+  parents: string[];
+}
 export interface RemoteOperation {
   seq: number;
   operation: Operation;
@@ -100,6 +106,33 @@ export class Store {
     await tx.done;
     this.notify();
     return op;
+  }
+  async writeBatch(changes: LocalChange[]): Promise<Operation[]> {
+    const createdAt = new Date().toISOString();
+    const operations = changes.map((change) =>
+      validateOperation({
+        id: crypto.randomUUID(),
+        kind: change.kind,
+        key: change.key,
+        value: change.value,
+        parents: change.parents,
+        createdAt,
+      }),
+    );
+    if (!operations.length) return [];
+    const tx = this.db.transaction("operations", "readwrite");
+    try {
+      for (const op of operations) await tx.store.put({ id: op.id, operation: op, pending: true });
+      await tx.done;
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {}
+      await tx.done.catch(() => {});
+      throw error;
+    }
+    this.notify();
+    return operations;
   }
   async acknowledge(ids: string[]): Promise<void> {
     const tx = this.db.transaction("operations", "readwrite");

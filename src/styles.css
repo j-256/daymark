@@ -1163,3 +1163,34 @@ details[open] summary::before {
 .pattern .history-chart {
   height: 24px;
 }
+.tracker-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.reorder-toggle {
+  margin-left: auto;
+  font-size: 12px;
+}
+.page-title > .reorder-toggle + .text-button {
+  margin-left: 0;
+}
+
+.legend {
+  flex-wrap: wrap;
+  row-gap: 3px;
+  padding: 5px 0;
+}
+.legend span {
+  white-space: nowrap;
+}
+.sheet-header h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.history-copy h3 {
+  overflow-wrap: anywhere;
+}
+.history-entry > button {
+  flex-shrink: 0;
+}

@@ -3,10 +3,10 @@
 Daymark is a compact tracker for pills, personal care, maintenance, and chores. It runs at [daymark.lasers.app](https://daymark.lasers.app) on Cloudflare Workers and D1.
 
 - Tap a Today status to confirm, with Undo for mistakes
-- Cycle weekly cells through unknown, confirmed, and skipped; open a row to edit a selected day's time and notes
+- Cycle weekly cells through unknown, confirmed, and skipped; open Details to choose a date and review slots, notes, and extra logs
 - Give a tracker separate named slots, such as morning and evening; log additional occurrences separately
-- Reorder the quick list in tracker settings; weekly chores stay complete for their week
-- Review recent patterns, last completion, and typical gaps
+- Use Trackers > Reorder to move items up or down; changes save offline and sync across devices. Weekly chores stay complete for their week
+- Explore 7, 28, or 90 days of patterns, per-slot counts, and average gaps within the selected range
 - Keep logging offline after the first successful load; reconnect to merge changes across devices
 - Use system, light, or dark appearance; system preference is the default
 

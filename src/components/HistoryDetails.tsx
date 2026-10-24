@@ -75,11 +75,12 @@ export function HistoryDetails({
               <button
                 type="button"
                 className="secondary compact"
+                aria-label={`${state === "conflict" ? "Review" : "Edit"} ${name}`}
                 onClick={() =>
                   state === "conflict" ? review() : edit(selectionFor(records, row, day))
                 }
               >
-                {state === "conflict" ? "Review" : `Edit ${name}`}
+                {state === "conflict" ? "Review" : "Edit"}
               </button>
             </article>
           );
