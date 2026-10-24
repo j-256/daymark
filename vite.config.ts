@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -14,6 +14,10 @@ export default defineConfig({
         const walk = (directory: string, prefix = "") => {
           for (const file of readdirSync(directory, { withFileTypes: true })) {
             const relative = `${prefix}${file.name}`;
+            if (file.name === ".DS_Store") {
+              rmSync(join(directory, file.name));
+              continue;
+            }
             if (file.isDirectory()) walk(join(directory, file.name), `${relative}/`);
             else if (!["sw.js", "_headers", "_redirects", ".assetsignore"].includes(relative))
               files.push(relative);

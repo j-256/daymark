@@ -24,6 +24,8 @@ npx wrangler deploy
 
 Apply schema migrations before deploying code that requires them. The dry-run output is kept outside the static asset directory. The deployment command builds from local source; deploy the clean, tested integration branch and retain Wrangler's version ID in the release evidence. Do not attach a public test hostname to bypass Access.
 
+The build removes Finder metadata before generating the offline shell. The release configuration check rejects unexpected files in the static artifact, and `.assetsignore` excludes root and nested `.DS_Store` files even if Finder creates them after verification. Cloudflare documents this exclusion format in [Ignoring assets](https://developers.cloudflare.com/workers/static-assets/binding/#ignoring-assets), checked on 2026-10-24.
+
 After deploying, read back the hostname, Worker, D1 binding, both Access applications and policies, and disabled provider URLs. Unauthenticated requests to `/`, `/admin`, and `/api/sync` must reach Access, while direct untrusted-origin access must fail. An Access redirect proves ingress protection; it does not prove authenticated application health. Complete an authenticated owner bootstrap, account login, tracker write, reload, and second-device merge when an owner browser session is available.
 
 ## Opening registration later

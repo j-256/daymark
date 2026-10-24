@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 
 const args = process.argv.slice(2);
 if (args.length === 1 && ["-h", "--help"].includes(args[0])) {
@@ -27,6 +27,36 @@ if (args.length === 1 && ["-h", "--help"].includes(args[0])) {
       assert.equal(config.vars[key], undefined, `${key} belongs in Worker secrets`);
     assert.equal(config.d1_databases[0].binding, "DB");
     assert.match(config.d1_databases[0].database_id, /^[a-f0-9-]{36}$/);
+    const allowedStatic = new Set([
+      "index.html",
+      "sw.js",
+      "_headers",
+      ".assetsignore",
+      "manifest.webmanifest",
+      "icon.svg",
+      "icon-192.png",
+      "icon-512.png",
+    ]);
+    const inspectAssets = (directory, prefix = "") => {
+      for (const file of readdirSync(directory, { withFileTypes: true })) {
+        const relative = prefix + file.name;
+        if (file.isDirectory()) {
+          assert.equal(relative, "assets", `Unexpected build asset directory: ${relative}`);
+          inspectAssets(`${directory}/${file.name}`, `${relative}/`);
+        } else
+          assert.ok(
+            file.isFile() &&
+              (allowedStatic.has(relative) || /^assets\/[a-zA-Z0-9_-]+\.(js|css)$/.test(relative)),
+            `Unexpected build asset: ${relative}`,
+          );
+      }
+    };
+    inspectAssets("dist");
+    const ignored = readFileSync("dist/.assetsignore", "utf8").split(/\r?\n/);
+    assert.ok(
+      ignored.includes(".DS_Store") && ignored.includes("**/.DS_Store"),
+      "Finder metadata must be excluded from deployment",
+    );
     const sw = readFileSync("dist/sw.js", "utf8");
     assert.ok(!sw.includes("__CACHE_VERSION__"));
     const paths = JSON.parse(sw.match(/const FILES = (\[[^;]+\]);/)[1]);
