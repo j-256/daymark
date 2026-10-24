@@ -96,6 +96,27 @@ describe("durable account storage", () => {
 });
 
 describe("sync protocol", () => {
+  it("resumes immediately when a local write arrives during a pull", async () => {
+    const s = await store();
+    let inserted = false;
+    let uploads = 0;
+    const engine = new SyncEngine(s, async (_input, init) => {
+      if (init?.method === "POST") {
+        uploads++;
+        const body = JSON.parse(init.body as string);
+        return Response.json({ acknowledged: body.operations.map((op: { id: string }) => op.id) });
+      }
+      if (!inserted) {
+        inserted = true;
+        await s.write("entry", key, empty);
+        void engine.run();
+      }
+      return Response.json({ operations: [], cursor: 0, hasMore: false });
+    });
+    await engine.run();
+    expect(await s.pending()).toEqual([]);
+    expect(uploads).toBe(1);
+  });
   it("keeps every pending edit when upload fails", async () => {
     const s = await store();
     const edit = await s.write("entry", key, empty);

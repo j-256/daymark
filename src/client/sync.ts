@@ -25,10 +25,11 @@ export class SyncEngine {
   state: SyncState = { status: "idle", pending: 0, message: "", lastSynced: null };
   onState?: (state: SyncState) => void;
   private current?: Promise<void>;
+  private requested = false;
   private abort = new AbortController();
   constructor(
     private store: Store,
-    private fetcher: Fetch = fetch,
+    private fetcher: Fetch = (input, init) => fetch(input, init),
   ) {}
   private set(patch: Partial<SyncState>) {
     this.state = { ...this.state, ...patch };
@@ -60,8 +61,16 @@ export class SyncEngine {
     return data;
   }
   run(): Promise<void> {
-    if (this.current) return this.current;
-    this.current = this.perform().finally(() => {
+    if (this.current) {
+      this.requested = true;
+      return this.current;
+    }
+    this.current = (async () => {
+      do {
+        this.requested = false;
+        await this.perform();
+      } while (this.requested && !this.abort.signal.aborted);
+    })().finally(() => {
       this.current = undefined;
     });
     return this.current;

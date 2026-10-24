@@ -27,7 +27,7 @@ export function createAuth(env: Env, registration = false) {
     },
     advanced: { useSecureCookies: env.APP_ORIGIN.startsWith("https:"), cookiePrefix: "daymark" },
     rateLimit: {
-      enabled: true,
+      enabled: env.APP_ORIGIN.startsWith("https://"),
       storage: "database",
       window: 60,
       max: 60,
