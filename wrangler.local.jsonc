@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "daymark-local",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "daymark",
+      "database_id": "local-daymark",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "access": { "dev": { "aud": "daymark-local", "identity": { "email": "owner@example.com" } } },
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5184",
+    "AUTH_SECRET": "local-development-only-not-a-production-secret-32",
+    "OWNER_EMAIL": "owner@example.com",
+    "ACCESS_REQUIRED": "false",
+    "ACCESS_ISSUER": "https://example.cloudflareaccess.com",
+    "ACCESS_AUDIENCE": "daymark-local",
+    "ADMIN_ACCESS_AUDIENCE": "daymark-local"
+  }
+}
