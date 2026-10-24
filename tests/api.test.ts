@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAuth } from "../worker/auth";
 import worker from "../worker/index";
 import type { Env } from "../worker/types";
@@ -309,4 +309,30 @@ describe("owner account management", () => {
     ).toBe(400);
     expect((await request("/api/admin/accounts", ownerCookie)).status).toBe(403);
   });
+});
+
+it("correlates quota failures without recording sensitive exception text", async () => {
+  const log = vi.spyOn(console, "info").mockImplementation(() => {});
+  try {
+    const broken = {
+      ...env,
+      DB: {
+        prepare() {
+          throw new Error(
+            "D1_ERROR: account has exceeded D1 free tier daily row read limit. sensitive-note-123",
+          );
+        },
+      } as unknown as D1Database,
+    };
+    const response = await worker.fetch(new Request(`${ORIGIN}/api/config`), broken, testContext);
+    expect(response.status).toBe(503);
+    const payload = (await response.json()) as { requestId: string };
+    const record = log.mock.calls
+      .map((call) => JSON.parse(String(call[0])))
+      .find((record) => record.requestId === payload.requestId);
+    expect(record.reason).toBe("database_limit");
+    expect(JSON.stringify(record)).not.toContain("sensitive-note");
+  } finally {
+    log.mockRestore();
+  }
 });

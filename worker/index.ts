@@ -18,6 +18,7 @@ export default {
     const requestId = crypto.randomUUID();
     const path = new URL(request.url).pathname;
     let response: Response;
+    let reason: string | undefined;
     try {
       if (env.ACCESS_REQUIRED === "true") await accessEmail(request, env, ctx);
       if (!["GET", "HEAD", "POST"].includes(request.method))
@@ -79,6 +80,15 @@ export default {
           : error instanceof ValidationError
             ? "invalid_operation"
             : "service_unavailable";
+      const detail = error instanceof Error ? error.message : "";
+      reason =
+        code !== "service_unavailable"
+          ? code
+          : /D1|database/i.test(detail)
+            ? /limit|quota|exceeded/i.test(detail)
+              ? "database_limit"
+              : "database_unavailable"
+            : "internal_error";
       response = json(
         {
           error: code,
@@ -113,8 +123,11 @@ export default {
             ? "admin"
             : path.startsWith("/api/auth/")
               ? "auth"
-              : path,
+              : ["/api/config", "/api/session", "/api/sync", "/api/health"].includes(path)
+                ? path
+                : "unknown",
           status: response.status,
+          reason,
           elapsedMs: Math.round(performance.now() - started),
         }),
       );
