@@ -25,6 +25,21 @@ export function HistoryDetails({
 }) {
   const extras = extraRecords(records, trackerId, day);
   const first = rows[0];
+  const editExtras = (manageExtras = false) => {
+    if (!first) return;
+    edit({
+      ...selectionFor(records, first, day),
+      parents: [],
+      extra: true,
+      manageExtras,
+      value: {
+        state: "confirmed",
+        note: "",
+        occurredAt: day === localDay() ? new Date().toISOString() : null,
+      },
+    });
+  };
+
   return (
     <Sheet title={first ? `History / ${first.tracker.name}` : "History"} close={close}>
       <label>
@@ -119,29 +134,11 @@ export function HistoryDetails({
         })}
         {first && (
           <div className="history-actions">
-            <button
-              className="text-button"
-              type="button"
-              onClick={() =>
-                edit({
-                  ...selectionFor(records, first, day),
-                  extra: true,
-                  value: {
-                    state: "confirmed",
-                    note: "",
-                    occurredAt: day === localDay() ? new Date().toISOString() : null,
-                  },
-                })
-              }
-            >
+            <button className="text-button" type="button" onClick={() => editExtras()}>
               Log extra occurrence
             </button>
             {extras.some((record) => !record.conflict) && (
-              <button
-                className="text-button"
-                type="button"
-                onClick={() => edit(selectionFor(records, first, day))}
-              >
+              <button className="text-button" type="button" onClick={() => editExtras(true)}>
                 Manage extra logs
               </button>
             )}

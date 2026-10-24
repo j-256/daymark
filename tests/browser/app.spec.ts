@@ -6,7 +6,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import type { Operation, Tracker } from "../../src/shared/model";
+import { materialize, type Operation, type Tracker } from "../../src/shared/model";
 
 const PASSWORD = "local-browser-test-password-123!";
 const ORIGIN = "http://localhost:5184";
@@ -546,3 +546,85 @@ test("keeps long tracker names, slots, and notes inside a narrow history sheet",
     await page.getByRole("dialog").evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
   ).toBeTruthy();
 });
+
+for (const action of ["Log extra occurrence", "Manage extra logs"]) {
+  for (const conflicting of [false, true]) {
+    test(`extra-only ${action} preserves ${conflicting ? "conflicting" : "skipped"} scheduled entries`, async ({
+      page,
+      request,
+    }) => {
+      await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+      await signIn(page, await newAccount(request));
+      const tracker = fixtureTracker("Pills");
+      const key = `${tracker.key}/2026-10-24/default`;
+      const original: Operation = {
+        id: crypto.randomUUID(),
+        kind: "entry",
+        key,
+        parents: [],
+        createdAt: new Date().toISOString(),
+        value: { state: "skipped", note: "Leave this slot skipped", occurredAt: null },
+      };
+      const other: Operation = {
+        ...original,
+        id: crypto.randomUUID(),
+        value: { state: "confirmed", note: "A separate device's version", occurredAt: null },
+      };
+      await seed(page, [
+        tracker,
+        original,
+        ...(conflicting ? [other] : []),
+        {
+          id: crypto.randomUUID(),
+          kind: "event",
+          key: crypto.randomUUID(),
+          parents: [],
+          createdAt: new Date().toISOString(),
+          value: {
+            trackerId: tracker.key,
+            day: "2026-10-24",
+            occurredAt: null,
+            note: "Existing extra log",
+            deleted: false,
+          },
+        },
+      ]);
+      await page.getByRole("button", { name: "Weeks", exact: true }).click();
+      await page.getByRole("button", { name: "Details for Pills / Morning", exact: true }).click();
+      await page.getByRole("button", { name: action, exact: true }).click();
+      const uploaded = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/sync" &&
+          response.status() === 200,
+      );
+      if (action === "Log extra occurrence") {
+        const toggle = page.getByLabel("Log an extra occurrence", { exact: true });
+        if (await toggle.count()) await toggle.uncheck();
+        await page.getByRole("button", { name: /^(Log occurrence|Save entry)$/ }).click();
+      } else {
+        const slotSave = page.getByRole("button", { name: "Save entry", exact: true });
+        if (await slotSave.count()) await slotSave.click();
+        else
+          await page.getByRole("button", { name: "Delete extra occurrence", exact: true }).click();
+      }
+      await uploaded;
+      await expect(page.getByTestId("sync-status")).toHaveText(/Synced/);
+      const operations = await page.evaluate(async () => {
+        const { account } = (await (await fetch("/api/session")).json()) as {
+          account: { id: string };
+        };
+        const result = (await (
+          await fetch("/api/sync?cursor=0", { headers: { "X-Daymark-Account": account.id } })
+        ).json()) as { operations: { operation: Operation }[] };
+        return result.operations.map((row) => row.operation);
+      });
+      const record = materialize(operations).get(`entry/${key}`);
+      expect(record?.conflict).toBe(conflicting);
+      expect(record?.value).toEqual(conflicting ? null : original.value);
+      expect(record?.heads.map((op) => op.id).sort()).toEqual(
+        [original.id, ...(conflicting ? [other.id] : [])].sort(),
+      );
+    });
+  }
+}
