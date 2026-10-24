@@ -338,3 +338,76 @@ test("preserves an existing instant when saving only a note", async ({ page, req
       ?.value,
   ).toMatchObject({ occurredAt: original });
 });
+
+test("opens weekly day details directly and shows notes and tracker extras once", async ({
+  page,
+  request,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+  await signIn(page, await newAccount(request));
+  const tracker = fixtureTracker("Pills");
+  (tracker.value as Tracker).slots = [
+    { id: "morning", name: "Morning", time: "08:00" },
+    { id: "evening", name: "Evening", time: "20:00" },
+  ];
+  const entry = (slot: string, day: string, note: string): Operation => ({
+    id: crypto.randomUUID(),
+    kind: "entry",
+    key: `${tracker.key}/${day}/${slot}`,
+    parents: [],
+    createdAt: new Date().toISOString(),
+    value: { state: "confirmed", occurredAt: null, note },
+  });
+  await seed(page, [
+    tracker,
+    entry("morning", "2026-10-24", "After breakfast"),
+    entry("evening", "2026-10-23", "After dinner"),
+    {
+      id: crypto.randomUUID(),
+      kind: "event",
+      key: crypto.randomUUID(),
+      parents: [],
+      createdAt: new Date().toISOString(),
+      value: {
+        trackerId: tracker.key,
+        day: "2026-10-24",
+        occurredAt: null,
+        note: "After swimming",
+        deleted: false,
+      },
+    },
+  ]);
+  await seed(page, [
+    {
+      ...tracker,
+      id: crypto.randomUUID(),
+      parents: [tracker.id],
+      value: {
+        ...(tracker.value as Tracker),
+        slots: [{ id: "morning", name: "Morning", time: "08:00" }],
+      },
+    },
+  ]);
+  await page.getByRole("button", { name: "Weeks", exact: true }).click();
+  await expect(page.locator('.day-cell[data-day="2026-10-24"] [data-extra-count="1"]')).toHaveCount(
+    1,
+  );
+  await expect(
+    page.locator('.day-cell[data-day="2026-10-24"][aria-label*="has note"]'),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "Details for Pills / Morning", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("After breakfast");
+  await expect(page.getByRole("dialog")).toContainText("After swimming");
+  await page.getByLabel("History date", { exact: true }).fill("2026-10-23");
+  await expect(page.getByRole("dialog")).toContainText("After dinner");
+  await expect(page.getByRole("dialog")).toContainText("Retired slot");
+  await page.getByLabel("History date", { exact: true }).fill("2026-10-25");
+  await expect(page.getByLabel("History date", { exact: true })).toHaveValue("2026-10-23");
+  await expect(page.getByRole("dialog")).not.toContainText("After swimming");
+  await page.getByRole("button", { name: "Edit Evening", exact: true }).click();
+  await expect(page.getByLabel("Date", { exact: true })).toHaveValue("2026-10-23");
+  await page.getByRole("textbox", { name: "Notes", exact: true }).fill("Dinner note updated");
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  await expect(page.getByLabel("History date", { exact: true })).toHaveValue("2026-10-23");
+  await expect(page.getByRole("dialog")).toContainText("Dinner note updated");
+});

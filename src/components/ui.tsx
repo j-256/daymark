@@ -1,4 +1,4 @@
-import { Check, Circle, Minus, TriangleAlert, X } from "lucide-react";
+import { Check, Circle, Minus, StickyNote, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef } from "react";
 import type { Status } from "../shared/model";
 
@@ -76,6 +76,8 @@ export function StatusButton({
   disabled,
   onClick,
   weekly,
+  note = false,
+  extraCount = 0,
 }: {
   state: Status | "conflict";
   label: string;
@@ -83,6 +85,8 @@ export function StatusButton({
   disabled?: boolean;
   onClick: () => void;
   weekly?: boolean;
+  note?: boolean;
+  extraCount?: number;
 }) {
   return (
     <button
@@ -90,13 +94,19 @@ export function StatusButton({
       className={`status-button${weekly ? " day-cell" : ""}`}
       data-day={day}
       data-state={state}
-      aria-label={`${label}, ${day}: ${state}`}
+      aria-label={`${label}, ${day}: ${state}${note ? ", has note" : ""}${extraCount ? `, ${extraCount} tracker extra occurrence${extraCount === 1 ? "" : "s"}` : ""}`}
       disabled={disabled}
       onClick={onClick}
     >
       <span className="status-face">
         <StatusIcon state={state} />
       </span>
+      {(note || extraCount > 0) && (
+        <span className="cell-markers" aria-hidden="true">
+          {note && <StickyNote />}
+          {extraCount > 0 && <span data-extra-count={extraCount}>+{extraCount}</span>}
+        </span>
+      )}
     </button>
   );
 }

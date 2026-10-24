@@ -1,5 +1,6 @@
 import { Archive, ChevronLeft, ChevronRight, MoreHorizontal, Plus, RotateCcw } from "lucide-react";
 import { useState } from "react";
+import { extraRecords } from "../client/history";
 import {
   dayDistance,
   due,
@@ -207,7 +208,15 @@ export function Today({
   );
 }
 
-export function Weeks({ rows, records, busy, mark, edit, review }: Common) {
+export function Weeks({
+  rows,
+  records,
+  busy,
+  mark,
+  edit,
+  review,
+  details,
+}: Common & { details: (row: TrackerRow, day: string) => void }) {
   const today = localDay();
   const [start, setStart] = useState(weekStart(today));
   const [count, setCount] = useState(1);
@@ -318,6 +327,14 @@ export function Weeks({ rows, records, busy, mark, edit, review }: Common) {
                   <span>
                     {row.retired ? "Retired slot" : row.slot.time || row.tracker.category}
                   </span>
+                  <button
+                    className="text-button history-details-button"
+                    type="button"
+                    aria-label={`Details for ${row.tracker.name}${row.slot.name ? ` / ${row.slot.name}` : ""}`}
+                    onClick={() => details(row, focus)}
+                  >
+                    Details
+                  </button>
                 </div>
                 <div className="week-cells">
                   {days.map((day) => {
@@ -326,6 +343,16 @@ export function Weeks({ rows, records, busy, mark, edit, review }: Common) {
                       <StatusButton
                         key={day}
                         weekly
+                        note={Boolean(
+                          (entryRecord(records, row, day)?.value as Entry | null)?.note,
+                        )}
+                        extraCount={
+                          rows.find((item) => item.trackerId === row.trackerId) === row
+                            ? extraRecords(records, row.trackerId, day).filter(
+                                (record) => !record.conflict,
+                              ).length
+                            : 0
+                        }
                         state={state}
                         label={row.tracker.name}
                         day={day}
@@ -343,7 +370,9 @@ export function Weeks({ rows, records, busy, mark, edit, review }: Common) {
           </section>
         );
       })}
-      <p className="hint">Select a date above, then a tracker name to edit time and notes.</p>
+      <p className="hint">
+        Open Details for time, notes, and extra logs. Tap a cell to cycle its status.
+      </p>
     </>
   );
 }

@@ -17,6 +17,7 @@ import { useDaymark } from "./client/useDaymark";
 import { Admin } from "./components/Admin";
 import { Conflicts } from "./components/Conflicts";
 import { EntryForm, type EntrySelection } from "./components/EntryForm";
+import { HistoryDetails } from "./components/HistoryDetails";
 import { Login } from "./components/Login";
 import { Settings, type Theme } from "./components/Settings";
 import { TrackerForm, type TrackerItem } from "./components/TrackerForm";
@@ -44,6 +45,7 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(preference);
   const [trackerEdit, setTrackerEdit] = useState<TrackerItem | "new" | null>(null);
   const [entryEdit, setEntryEdit] = useState<EntrySelection | null>(null);
+  const [history, setHistory] = useState<{ trackerId: string; day: string } | null>(null);
   const [review, setReview] = useState(false);
   const [syncDetails, setSyncDetails] = useState(false);
   const [extraPicker, setExtraPicker] = useState(false);
@@ -106,6 +108,7 @@ export function App() {
     if (!daymark.account?.id && daymark.loading) return;
     setTrackerEdit(null);
     setEntryEdit(null);
+    setHistory(null);
     setReview(false);
     setSyncDetails(false);
     setExtraPicker(false);
@@ -281,7 +284,13 @@ export function App() {
               </div>
             )}
             {tab === "today" && <Today {...common} add={() => setTrackerEdit("new")} />}
-            {tab === "weeks" && <Weeks {...common} rows={historyRows} />}
+            {tab === "weeks" && (
+              <Weeks
+                {...common}
+                rows={historyRows}
+                details={(row, day) => setHistory({ trackerId: row.trackerId, day })}
+              />
+            )}
             {tab === "patterns" && <Patterns items={visibleTrackers} records={records} />}
             {tab === "trackers" && (
               <>
@@ -347,6 +356,18 @@ export function App() {
           item={trackerEdit === "new" ? undefined : trackerEdit}
           close={() => setTrackerEdit(null)}
           notify={notify}
+        />
+      )}
+      {history && !entryEdit && !review && (
+        <HistoryDetails
+          trackerId={history.trackerId}
+          rows={historyRows.filter((row) => row.trackerId === history.trackerId)}
+          records={records}
+          day={history.day}
+          selectDay={(day) => setHistory({ ...history, day })}
+          edit={setEntryEdit}
+          review={() => setReview(true)}
+          close={() => setHistory(null)}
         />
       )}
       {entryEdit && (

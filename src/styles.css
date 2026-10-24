@@ -1027,3 +1027,75 @@ details[open] summary::before {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.status-button {
+  position: relative;
+}
+.cell-markers {
+  position: absolute;
+  bottom: 1px;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 9px;
+  line-height: 10px;
+  color: var(--green);
+  pointer-events: none;
+}
+.cell-markers svg {
+  width: 10px;
+  height: 10px;
+}
+.week-label .history-details-button {
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.history-entries {
+  margin-top: 16px;
+}
+.history-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.history-copy {
+  flex: 1;
+  min-width: 0;
+}
+.history-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.history-state svg {
+  width: 15px;
+  height: 15px;
+}
+.history-note {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+.history-extra {
+  margin: 12px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
+.history-extra > .muted {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
