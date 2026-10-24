@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { message } from "../client/api";
+import { localInstants, savedInstant, type TimeChoice } from "../client/entry-time";
 import type { Daymark } from "../client/useDaymark";
 import {
   type Entry,
@@ -41,6 +42,12 @@ export function EntryForm({
       ? new Date(selection.value.occurredAt).toTimeString().slice(0, 5)
       : "",
   );
+  const [timeChanged, setTimeChanged] = useState(false);
+  const [timeChoice, setTimeChoice] = useState<TimeChoice>("earlier");
+  let ambiguous = false;
+  try {
+    ambiguous = (timeChanged || extra) && localInstants(day, time).length > 1;
+  } catch {}
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(selection.value.note);
@@ -62,7 +69,13 @@ export function EntryForm({
           setError("");
           setBusy(true);
           try {
-            const occurredAt = time ? new Date(`${day}T${time}:00`).toISOString() : null;
+            const occurredAt = savedInstant(
+              selection.value.occurredAt,
+              timeChanged || extra,
+              day,
+              time,
+              timeChoice,
+            );
             if (extra) {
               const value: ExtraEvent = {
                 trackerId: selection.trackerId,
@@ -118,8 +131,27 @@ export function EntryForm({
         )}
         <label>
           Time (optional)
-          <input type="time" value={time} onChange={(event) => setTime(event.target.value)} />
+          <input
+            type="time"
+            value={time}
+            onChange={(event) => {
+              setTime(event.target.value);
+              setTimeChanged(true);
+            }}
+          />
         </label>
+        {ambiguous && (
+          <label>
+            Repeated local time
+            <select
+              value={timeChoice}
+              onChange={(event) => setTimeChoice(event.target.value as TimeChoice)}
+            >
+              <option value="earlier">First occurrence</option>
+              <option value="later">Second occurrence</option>
+            </select>
+          </label>
+        )}
         <label>
           Notes
           <textarea

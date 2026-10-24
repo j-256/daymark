@@ -5,6 +5,7 @@ Daymark is a compact tracker for pills, personal care, maintenance, and chores. 
 - Tap a Today status to confirm, with Undo for mistakes
 - Cycle weekly cells through unknown, confirmed, and skipped; open a row to edit a selected day's time and notes
 - Give a tracker separate named slots, such as morning and evening; log additional occurrences separately
+- Reorder the quick list in tracker settings; weekly chores stay complete for their week
 - Review recent patterns, last completion, and typical gaps
 - Keep logging offline after the first successful load; reconnect to merge changes across devices
 - Use system, light, or dark appearance; system preference is the default
@@ -46,6 +47,6 @@ The GitHub repository is private and GitHub Actions is disabled at the repositor
 
 Browser history is stored per account in IndexedDB. Settings exports a JSON backup; importing a backup merges its operations into the same account. Treat backups as private activity history. Offline storage remains on the device after sign-out, so use a trusted browser profile. Browser storage eviction or clearing site data can remove unsynced changes; export a backup before clearing storage. Daymark requests no notification, location, or camera permissions.
 
-The server retains an append-only activity history. Archiving a tracker and removing a slot preserve its history. V1 has no reminders, push notifications, shared trackers, automatic pruning, or scheduled backup export. Times are displayed in the viewing device's local time; the recorded calendar day stays fixed.
+The server retains an append-only activity history. Archiving a tracker and removing a slot preserve its history. V1 has no reminders, push notifications, shared trackers, automatic pruning, or scheduled backup export. Times are displayed in the viewing device's local time; the recorded calendar day stays fixed. Editing notes preserves the original instant, and changing an ambiguous daylight-saving time offers a choice between its first and second occurrence.
 
 See [deployment, recovery, security boundaries, and Cloudflare Free-plan assessment](docs/deployment.md). Licensed under [AGPL-3.0-only](LICENSE).

@@ -6,6 +6,7 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import type { Operation, Tracker } from "../../src/shared/model";
 
 const PASSWORD = "local-browser-test-password-123!";
 const ORIGIN = "http://localhost:5184";
@@ -201,4 +202,139 @@ test("isolates local history when switching app accounts", async ({ page, reques
   await signIn(page, a);
   await expect(quick(page, "Private A tracker")).toBeVisible();
   await expect(page.getByText("Private B tracker", { exact: true })).toHaveCount(0);
+});
+
+function fixtureTracker(name: string, schedule: Tracker["schedule"] = "daily"): Operation {
+  return {
+    id: crypto.randomUUID(),
+    kind: "tracker",
+    key: crypto.randomUUID(),
+    parents: [],
+    createdAt: new Date().toISOString(),
+    value: {
+      name,
+      category: "Home",
+      schedule,
+      slots: [{ id: "default", name: "Morning", time: "08:00" }],
+      weekdays: [],
+      pinned: true,
+      archived: false,
+      order: 1,
+    },
+  };
+}
+async function seed(page: Page, operations: Operation[]) {
+  const status = await page.evaluate(async (operations) => {
+    const { account } = (await (await fetch("/api/session")).json()) as { account: { id: string } };
+    const response = await fetch("/api/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Daymark-Account": account.id },
+      body: JSON.stringify({ operations }),
+    });
+    window.dispatchEvent(new Event("focus"));
+    return response.status;
+  }, operations);
+  expect(status).toBe(200);
+}
+test("counts an earlier completion toward an any-day weekly chore", async ({ page, request }) => {
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+  await signIn(page, await newAccount(request));
+  const tracker = fixtureTracker("Change sheets", "weekly");
+  await seed(page, [
+    tracker,
+    {
+      id: crypto.randomUUID(),
+      kind: "entry",
+      key: `${tracker.key}/2026-10-19/default`,
+      parents: [],
+      createdAt: new Date().toISOString(),
+      value: { state: "confirmed", note: "", occurredAt: "2026-10-19T08:00:00Z" },
+    },
+  ]);
+  await expect(quick(page, "Change sheets")).toHaveAttribute("data-state", "confirmed");
+  await expect(page.locator(".summary strong")).toHaveText("1/1");
+});
+test("lets the owner of a tracker change its quick-list order", async ({ page, request }) => {
+  await signIn(page, await newAccount(request));
+  await createTracker(page, "First");
+  await createTracker(page, "Second");
+  await page.getByRole("button", { name: "Trackers", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Second", exact: true }).click();
+  await page.getByLabel("Quick-list order", { exact: true }).fill("-1");
+  await page.getByRole("button", { name: "Save tracker", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await expect(page.locator(".log-row").first()).toContainText("Second");
+});
+test("shows times and slot identity before choosing a conflicting entry", async ({
+  page,
+  request,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+  await signIn(page, await newAccount(request));
+  const tracker = fixtureTracker("Pills");
+  const versions = ["2026-10-24T08:00:00.000Z", "2026-10-24T09:00:00.000Z"].map((occurredAt) => ({
+    id: crypto.randomUUID(),
+    kind: "entry" as const,
+    key: `${tracker.key}/2026-10-24/default`,
+    parents: [],
+    createdAt: new Date().toISOString(),
+    value: { state: "confirmed" as const, note: "", occurredAt },
+  }));
+  await seed(page, [tracker, ...versions]);
+  await page.getByRole("button", { name: /Review.*conflict/i }).click();
+  await expect(page.getByRole("dialog")).toContainText("Morning");
+  for (const op of versions)
+    await expect(page.locator(`time[datetime="${op.value.occurredAt}"]`)).toBeVisible();
+});
+test("shows competing slot settings before choosing a tracker version", async ({
+  page,
+  request,
+}) => {
+  await signIn(page, await newAccount(request));
+  const first = fixtureTracker("Pills");
+  const second = {
+    ...first,
+    id: crypto.randomUUID(),
+    value: {
+      ...(first.value as Tracker),
+      slots: [{ id: "default", name: "Evening", time: "20:00" }],
+    },
+  };
+  await seed(page, [first, second]);
+  await page.getByRole("button", { name: /Review.*conflict/i }).click();
+  await expect(page.getByRole("dialog")).toContainText("08:00");
+  await expect(page.getByRole("dialog")).toContainText("20:00");
+});
+
+test("preserves an existing instant when saving only a note", async ({ page, request }) => {
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+  await signIn(page, await newAccount(request));
+  const tracker = fixtureTracker("Pills");
+  const original = "2026-10-23T22:30:42.123Z";
+  await seed(page, [
+    tracker,
+    {
+      id: crypto.randomUUID(),
+      kind: "entry",
+      key: `${tracker.key}/2026-10-24/default`,
+      parents: [],
+      createdAt: new Date().toISOString(),
+      value: { state: "confirmed", note: "", occurredAt: original },
+    },
+  ]);
+  await page.locator(".log-row").filter({ hasText: "Pills" }).locator(".item-copy").click();
+  await page.getByLabel("Notes", { exact: true }).fill("Only the note changed");
+  const upload = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/sync" &&
+      request.postData()?.includes("Only the note changed") === true,
+  );
+  await page.getByRole("button", { name: "Save entry", exact: true }).click();
+  const body = (await upload).postDataJSON() as { operations: Operation[] };
+  expect(
+    body.operations.find((op) => "note" in op.value && op.value.note === "Only the note changed")
+      ?.value,
+  ).toMatchObject({ occurredAt: original });
 });

@@ -64,6 +64,28 @@ function ago(day: string | null): string {
   return distance === 0 ? "Today" : distance === 1 ? "Yesterday" : `${distance} days ago`;
 }
 
+function todayRecordDay(records: Records, row: TrackerRow, today: string): string {
+  if (row.tracker.schedule !== "weekly") return today;
+  const first = weekStart(today);
+  const days = [...records.values()]
+    .filter(
+      (record) =>
+        record.kind === "entry" &&
+        record.key.startsWith(`${row.trackerId}/`) &&
+        record.key.endsWith(`/${row.slot.id}`),
+    )
+    .filter((record) => {
+      const day = record.key.split("/")[1];
+      return (
+        day >= first &&
+        day <= today &&
+        (record.conflict || (record.value as Entry | null)?.state === "confirmed")
+      );
+    })
+    .sort((a, b) => Number(b.conflict) - Number(a.conflict) || b.key.localeCompare(a.key));
+  return days[0]?.key.split("/")[1] ?? today;
+}
+
 interface Common {
   rows: TrackerRow[];
   records: Records;
@@ -85,7 +107,7 @@ export function Today({
   const pinned = rows.filter((row) => row.tracker.pinned && !row.retired);
   const scheduled = pinned.filter((row) => due(row.tracker, today));
   const confirmed = scheduled.filter(
-    (row) => statusFor(records, row, today) === "confirmed",
+    (row) => statusFor(records, row, todayRecordDay(records, row, today)) === "confirmed",
   ).length;
   let category: string | null = null;
   return (
@@ -120,8 +142,9 @@ export function Today({
         {pinned.map((row) => {
           const heading = category !== row.tracker.category;
           category = row.tracker.category;
-          const state = statusFor(records, row, today);
-          const value = entryRecord(records, row, today)?.value as Entry | null;
+          const recordDay = todayRecordDay(records, row, today);
+          const state = statusFor(records, row, recordDay);
+          const value = entryRecord(records, row, recordDay)?.value as Entry | null;
           const label =
             row.slot.name || row.slot.time
               ? [row.slot.name, row.slot.time].filter(Boolean).join(" / ")
@@ -134,12 +157,21 @@ export function Today({
                   type="button"
                   className="item-copy"
                   onClick={() =>
-                    state === "conflict" ? review() : edit(selectionFor(records, row, today))
+                    state === "conflict" ? review() : edit(selectionFor(records, row, recordDay))
                   }
                 >
                   <span className="item-name">{row.tracker.name}</span>
                   <span className="item-meta">
-                    {label}
+                    {row.tracker.schedule === "weekly"
+                      ? [
+                          row.slot.name,
+                          row.slot.time,
+                          "This week",
+                          ago(lastDone(records, row.trackerId)),
+                        ]
+                          .filter(Boolean)
+                          .join(" / ")
+                      : label}
                     {state === "confirmed" && value?.occurredAt
                       ? ` / ${new Date(value.occurredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
                       : ""}
@@ -147,12 +179,12 @@ export function Today({
                 </button>
                 <StatusButton
                   state={state}
-                  label={`${row.tracker.name}${row.slot.name ? ` / ${row.slot.name}` : ""}`}
-                  day={today}
-                  disabled={busy === entryKey(row.trackerId, today, row.slot.id)}
+                  label={`${row.tracker.name}${row.slot.name ? ` / ${row.slot.name}` : ""}${row.tracker.schedule === "weekly" ? " / this week" : ""}`}
+                  day={recordDay}
+                  disabled={busy === entryKey(row.trackerId, recordDay, row.slot.id)}
                   onClick={() => {
                     if (state === "conflict") review();
-                    else void mark(row, today, false);
+                    else void mark(row, recordDay, false);
                   }}
                 />
               </div>

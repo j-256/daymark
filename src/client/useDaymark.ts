@@ -18,20 +18,28 @@ export function useDaymark() {
   const [account, setAccount] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
   const [store, setStore] = useState<Store | null>(null);
-  const [operations, setOperations] = useState<Operation[]>([]);
+  const [snapshot, setSnapshot] = useState<{ accountId: string | null; values: Operation[] }>({
+    accountId: null,
+    values: [],
+  });
+  const operations = snapshot.accountId === account?.id ? snapshot.values : [];
   const [sync, setSync] = useState<SyncState>(initialSync);
   const [online, setOnline] = useState(navigator.onLine);
   const [failure, setFailure] = useState("");
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const engine = useRef<SyncEngine | null>(null);
   const activeAccount = useRef<string | null>(null);
+  const sessionRequest = useRef(0);
   activeAccount.current = account?.id ?? null;
   const refresh = useCallback(async (target: Store) => {
     const data = await target.list();
-    if (activeAccount.current === target.accountId) setOperations(data);
+    if (activeAccount.current === target.accountId)
+      setSnapshot({ accountId: target.accountId, values: data });
   }, []);
   const fetchSession = useCallback(async () => {
+    const version = ++sessionRequest.current;
     const data = await api<{ account: Account; registrationOpen: boolean }>("/api/session");
+    if (version !== sessionRequest.current) return data.account;
     localStorage.setItem(ACCOUNT_KEY, JSON.stringify(data.account));
     setAccount(data.account);
     setRegistrationOpen(data.registrationOpen);
@@ -56,7 +64,7 @@ export function useDaymark() {
   useEffect(() => {
     if (!account) {
       setStore(null);
-      setOperations([]);
+      setSnapshot({ accountId: null, values: [] });
       return;
     }
     let disposed = false;
@@ -83,6 +91,7 @@ export function useDaymark() {
         opened = value;
         setStore(value);
         await refresh(value);
+        if (disposed) return;
         const instance = new SyncEngine(value);
         instance.onState = (state) => {
           if (!disposed) setSync(state);
@@ -122,7 +131,8 @@ export function useDaymark() {
     };
   }, [account?.id, account, refresh]);
   const save = async (kind: Kind, key: string, value: Value, parents?: string[]) => {
-    if (!store) throw new Error("Browser storage is not ready");
+    if (!store || store.accountId !== account?.id || snapshot.accountId !== account.id)
+      throw new Error("Browser storage is not ready for this account");
     const observed =
       parents ??
       heads(operations.filter((op) => op.kind === kind && op.key === key)).map((op) => op.id);
@@ -143,13 +153,15 @@ export function useDaymark() {
     void engine.current?.run().catch(() => {});
   };
   const signOut = async () => {
+    sessionRequest.current++;
     await api("/api/auth/sign-out", {});
     localStorage.removeItem(ACCOUNT_KEY);
     engine.current?.stop();
     setAccount(null);
     setSync(initialSync);
   };
-  const matchingStore = store?.accountId === account?.id ? store : null;
+  const matchingStore =
+    store?.accountId === account?.id && snapshot.accountId === account?.id ? store : null;
   return {
     account,
     loading,

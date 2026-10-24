@@ -48,9 +48,7 @@ export function TrackerForm({
               slots,
               pinned: data.get("pinned") === "on",
               archived: item?.value.archived ?? false,
-              order:
-                item?.value.order ??
-                daymark.operations.filter((op) => op.kind === "tracker").length,
+              order: Number(data.get("order")),
             });
             await daymark.save(
               "tracker",
@@ -177,6 +175,21 @@ export function TrackerForm({
             Add time slot
           </button>
         </fieldset>
+        <label>
+          Quick-list order
+          <input
+            name="order"
+            type="number"
+            min={-1000000}
+            max={1000000}
+            step="any"
+            required
+            defaultValue={
+              item?.value.order ?? daymark.operations.filter((op) => op.kind === "tracker").length
+            }
+          />
+        </label>
+        <p className="hint">Lower numbers appear first.</p>
         <label className="check-label">
           <input type="checkbox" name="pinned" defaultChecked={item?.value.pinned ?? true} />
           Show in Today
