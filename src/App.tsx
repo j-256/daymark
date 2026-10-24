@@ -19,12 +19,12 @@ import { Conflicts } from "./components/Conflicts";
 import { EntryForm, type EntrySelection } from "./components/EntryForm";
 import { HistoryDetails } from "./components/HistoryDetails";
 import { Login } from "./components/Login";
+import { Patterns } from "./components/Patterns";
 import { Settings, type Theme } from "./components/Settings";
 import { TrackerForm, type TrackerItem } from "./components/TrackerForm";
 import { ErrorMessage, Sheet } from "./components/ui";
 import {
   entryRecord,
-  Patterns,
   selectionFor,
   statusFor,
   Today,
@@ -291,7 +291,9 @@ export function App() {
                 details={(row, day) => setHistory({ trackerId: row.trackerId, day })}
               />
             )}
-            {tab === "patterns" && <Patterns items={visibleTrackers} records={records} />}
+            {tab === "patterns" && (
+              <Patterns items={visibleTrackers} rows={historyRows} records={records} />
+            )}
             {tab === "trackers" && (
               <>
                 <Trackers

@@ -411,3 +411,48 @@ test("opens weekly day details directly and shows notes and tracker extras once"
   await expect(page.getByLabel("History date", { exact: true })).toHaveValue("2026-10-23");
   await expect(page.getByRole("dialog")).toContainText("Dinner note updated");
 });
+
+test("scopes pattern totals and gaps to the selected range with named slot breakdowns", async ({
+  page,
+  request,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-10-24T12:00:00"));
+  await signIn(page, await newAccount(request));
+  const tracker = fixtureTracker("Pills");
+  (tracker.value as Tracker).slots = [
+    { id: "morning", name: "Morning", time: "08:00" },
+    { id: "evening", name: "Evening", time: "20:00" },
+  ];
+  const entry = (day: string, slot: string): Operation => ({
+    id: crypto.randomUUID(),
+    kind: "entry",
+    key: `${tracker.key}/${day}/${slot}`,
+    parents: [],
+    createdAt: new Date().toISOString(),
+    value: { state: "confirmed", occurredAt: null, note: "" },
+  });
+  await seed(page, [
+    tracker,
+    entry("2026-10-01", "morning"),
+    entry("2026-10-18", "morning"),
+    entry("2026-10-24", "evening"),
+  ]);
+  await page.getByRole("button", { name: "Patterns", exact: true }).click();
+  await page.getByLabel("Patterns range", { exact: true }).selectOption("7");
+  const pattern = page.getByRole("article", { name: "Patterns for Pills", exact: true });
+  await expect(pattern.locator(".pattern-heading strong")).toHaveText("2confirmed");
+  await expect(pattern).toContainText("Average gap: 6d");
+  const morning = pattern.getByRole("row").filter({ hasText: "Morning" });
+  await expect(morning.getByRole("cell").nth(1)).toHaveText("1");
+  await page.getByLabel("Patterns range", { exact: true }).selectOption("28");
+  await expect(pattern.locator(".pattern-heading strong")).toHaveText("3confirmed");
+  await expect(pattern).toContainText("Average gap: 11.5d");
+  await pattern.getByText("How these numbers work", { exact: true }).click();
+  await expect(pattern).toContainText("within the selected range");
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    ).toBeTruthy();
+  }
+});

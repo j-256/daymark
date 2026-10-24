@@ -1099,3 +1099,67 @@ details[open] summary::before {
   flex-wrap: wrap;
   gap: 0 12px;
 }
+.pattern-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 15px;
+}
+.pattern-controls label {
+  min-width: 132px;
+}
+.pattern-controls select {
+  font-size: 14px;
+}
+.range-caption {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.slot-summary {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 14px;
+  table-layout: fixed;
+}
+.slot-summary caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.slot-summary th {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.slot-summary th,
+.slot-summary td {
+  text-align: right;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.slot-summary th:first-child,
+.slot-summary td:first-child {
+  width: 48%;
+  text-align: left;
+}
+.slot-summary .item-meta {
+  display: block;
+  font-size: 10px;
+}
+.pattern-method {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pattern-method p {
+  margin: 6px 0;
+}
+.chart-conflict {
+  fill: var(--amber);
+}
+.pattern .history-chart {
+  height: 24px;
+}
