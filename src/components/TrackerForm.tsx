@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { message } from "../client/api";
+import { formatQuantity, parseQuantity, stockBalances } from "../client/inventory";
 import type { Daymark } from "../client/useDaymark";
 import type { Slot, Tracker } from "../shared/model";
 import { validateTracker } from "../shared/validation";
@@ -27,6 +28,11 @@ export function TrackerForm({
   );
   const [schedule, setSchedule] = useState<Tracker["schedule"]>(item?.value.schedule ?? "daily");
   const [weekdays, setWeekdays] = useState(item?.value.weekdays ?? [1, 2, 3, 4, 5]);
+  const [inventoryId, setInventoryId] = useState(item?.value.inventory?.itemId ?? "");
+  const [amount, setAmount] = useState(formatQuantity(item?.value.inventory?.quantity ?? 1000));
+  const supplies = [...stockBalances(daymark.operations).values()].filter(
+    (stock) => !stock.item.archived || stock.id === inventoryId,
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const changeSlot = (id: string, patch: Partial<Slot>) =>
@@ -42,6 +48,9 @@ export function TrackerForm({
           try {
             const value = validateTracker({
               name: String(data.get("name")),
+              ...(inventoryId
+                ? { inventory: { itemId: inventoryId, quantity: parseQuantity(amount) } }
+                : {}),
               category: String(data.get("category")),
               schedule,
               weekdays,
@@ -176,6 +185,38 @@ export function TrackerForm({
             <Plus />
             Add time slot
           </button>
+        </fieldset>
+        <fieldset>
+          <legend>Stock tracking (optional)</legend>
+          <label>
+            Inventory item
+            <select value={inventoryId} onChange={(event) => setInventoryId(event.target.value)}>
+              <option value="">Don't track stock</option>
+              {supplies.map((stock) => (
+                <option key={stock.id} value={stock.id}>
+                  {stock.item.name}
+                  {stock.item.archived ? " (archived)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          {inventoryId && (
+            <label>
+              Quantity per occurrence
+              <input
+                type="text"
+                inputMode="decimal"
+                maxLength={24}
+                required
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+              />
+            </label>
+          )}
+          <p className="hint">
+            Each newly confirmed slot or extra log deducts this amount. Earlier entries keep their
+            recorded stock use.
+          </p>
         </fieldset>
         <label className="check-label">
           <input type="checkbox" name="pinned" defaultChecked={item?.value.pinned ?? true} />

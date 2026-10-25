@@ -5,6 +5,7 @@ import {
   CloudOff,
   LayoutGrid,
   ListChecks,
+  Package,
   Plus,
   RefreshCw,
   Settings as SettingsIcon,
@@ -13,12 +14,14 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { message } from "./client/api";
 import { applyAppearance, preference, THEME_KEY } from "./client/appearance";
+import { consumptionFor, stockBalances } from "./client/inventory";
 import { type MoveDirection, reorderChanges } from "./client/ordering";
 import { useDaymark } from "./client/useDaymark";
 import { Admin } from "./components/Admin";
 import { Conflicts } from "./components/Conflicts";
 import { EntryForm, type EntrySelection } from "./components/EntryForm";
 import { HistoryDetails } from "./components/HistoryDetails";
+import { Inventory } from "./components/Inventory";
 import { Login } from "./components/Login";
 import { Patterns } from "./components/Patterns";
 import { Settings, type Theme } from "./components/Settings";
@@ -35,7 +38,7 @@ import {
 } from "./components/Views";
 import { type Entry, entryKey, localDay, materialize, type Tracker } from "./shared/model";
 
-type Tab = "today" | "weeks" | "patterns" | "trackers" | "settings";
+type Tab = "today" | "weeks" | "patterns" | "trackers" | "inventory" | "settings";
 interface Toast {
   text: string;
   undo?: () => Promise<void>;
@@ -57,6 +60,11 @@ export function App() {
   const [orderingBusy, setOrderingBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const records = useMemo(() => materialize(daymark.operations), [daymark.operations]);
+  const balances = useMemo(() => stockBalances(daymark.operations), [daymark.operations]);
+  const lowStock = [...balances.values()].filter(
+    (balance) =>
+      !balance.item.archived && !balance.uncertain && balance.quantity <= balance.item.lowStock,
+  );
   const conflicts = [...records.values()].filter((record) => record.conflict);
   const allTrackers: TrackerItem[] = [...records.values()]
     .filter((record) => record.kind === "tracker" && record.value)
@@ -147,6 +155,7 @@ export function App() {
       : state === "confirmed"
         ? "unknown"
         : "confirmed";
+    const inventory = consumptionFor(row.tracker, previous, next === "confirmed");
     setBusy(key);
     try {
       const op = await daymark.save(
@@ -154,6 +163,7 @@ export function App() {
         key,
         {
           state: next,
+          ...(inventory ? { inventory } : {}),
           note: previous.note,
           occurredAt: next === "confirmed" && day === localDay() ? new Date().toISOString() : null,
         },
@@ -288,21 +298,34 @@ export function App() {
                 </span>
               </button>
             )}
-            {tab !== "settings" && tab !== "trackers" && activeTrackers.length > 1 && (
-              <div className="filter-row">
-                <select
-                  aria-label="Filter category"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                >
-                  <option value="">All categories</option>
-                  {[...new Set(activeTrackers.map((item) => item.value.category))].map((value) => (
-                    <option value={value} key={value}>
-                      {value || "Personal"}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {tab !== "settings" &&
+              tab !== "trackers" &&
+              tab !== "inventory" &&
+              activeTrackers.length > 1 && (
+                <div className="filter-row">
+                  <select
+                    aria-label="Filter category"
+                    value={category}
+                    onChange={(event) => setCategory(event.target.value)}
+                  >
+                    <option value="">All categories</option>
+                    {[...new Set(activeTrackers.map((item) => item.value.category))].map(
+                      (value) => (
+                        <option value={value} key={value}>
+                          {value || "Personal"}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </div>
+              )}
+            {tab === "today" && lowStock.length > 0 && (
+              <button type="button" className="stock-notice" onClick={() => setTab("inventory")}>
+                {lowStock.length} medication{lowStock.length === 1 ? "" : "s"} low on stock
+              </button>
+            )}
+            {tab === "inventory" && (
+              <Inventory daymark={daymark} notify={notify} review={() => setReview(true)} />
             )}
             {tab === "today" && <Today {...common} add={() => setTrackerEdit("new")} />}
             {tab === "weeks" && (
@@ -346,6 +369,7 @@ export function App() {
                 { id: "today", label: "Today", icon: ListChecks },
                 { id: "weeks", label: "Weeks", icon: CalendarDays },
                 { id: "patterns", label: "Patterns", icon: ChartNoAxesCombined },
+                { id: "inventory", label: "Inventory", icon: Package },
                 { id: "trackers", label: "Trackers", icon: LayoutGrid },
               ] as const
             ).map((item) => (

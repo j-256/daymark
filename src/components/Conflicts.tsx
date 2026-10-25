@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { message } from "../client/api";
+import { formatQuantity, stockBalances } from "../client/inventory";
 import type { Daymark } from "../client/useDaymark";
 import type { Entry, ExtraEvent, RecordState, Tracker, Value } from "../shared/model";
 import { ErrorMessage, Sheet, StatusIcon } from "./ui";
 
 function describeValue(value: Value): string {
+  if ("reason" in value)
+    return `${value.deleted ? "Removed " : ""}${formatQuantity(value.quantity)} stock change`;
   if ("state" in value) return value.state;
   if ("name" in value) return value.archived ? `Archive ${value.name}` : value.name;
   return value.deleted ? "Delete occurrence" : "Keep occurrence";
@@ -47,8 +50,12 @@ export function Conflicts({
       .filter((op) => op.kind === "tracker" && op.key === trackerId)
       .flatMap((op) => (op.value as Tracker).slots)
       .find((slot) => slot.id === slotId);
+  const supplies = stockBalances(daymark.operations);
+  const firstValue = conflict.heads[0].value;
   const name =
-    trackers.get(trackerId)?.name ?? (conflict.heads[0].value as Tracker).name ?? "Activity";
+    conflict.kind === "stock" && "itemId" in firstValue
+      ? (supplies.get(firstValue.itemId)?.item.name ?? "Stock change")
+      : (trackers.get(trackerId)?.name ?? ("name" in firstValue ? firstValue.name : "Activity"));
   return (
     <Sheet title="Review conflicting edits" close={close}>
       <p className="muted">Both versions were saved. Choose what this entry should show.</p>
@@ -82,6 +89,28 @@ export function Conflicts({
                 </p>
                 <p>{op.value.note || "No notes"}</p>
               </>
+            )}
+            {"reason" in op.value && (
+              <p>
+                {op.value.day} / {op.value.reason}
+                <br />
+                {op.value.note || "No notes"}
+              </p>
+            )}
+            {"unit" in op.value && (
+              <p>
+                Unit: {op.value.unit}
+                <br />
+                Low stock at: {formatQuantity(op.value.lowStock)}
+              </p>
+            )}
+            {("state" in op.value || "slots" in op.value || "trackerId" in op.value) && (
+              <p className="hint">
+                Stock use:{" "}
+                {op.value.inventory
+                  ? `${formatQuantity(op.value.inventory.quantity)} ${supplies.get(op.value.inventory.itemId)?.item.unit ?? "units"} / ${supplies.get(op.value.inventory.itemId)?.item.name ?? "Missing supply"}`
+                  : "None"}
+              </p>
             )}
             {"slots" in op.value && (
               <dl className="conflict-fields">

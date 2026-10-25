@@ -8,6 +8,8 @@ Daymark is a compact tracker for pills, personal care, maintenance, and chores. 
 - Use Trackers > Reorder to move items up or down; changes save offline and sync across devices. Weekly chores stay complete for their week
 - Explore 7, 28, or 90 days of patterns, per-slot counts, and average gaps within the selected range
 - Keep logging offline after the first successful load; reconnect to merge changes across devices
+- Track medication stock, record refills, review stock history, and flag low supplies in Inventory
+- Optionally link a tracker to a supply and deduct a quantity for each newly confirmed slot or extra log; Undo restores stock
 - Use system, light, or dark appearance; system preference is the default
 
 Concurrent edits to different records merge automatically. Different edits to the same record remain visible as a conflict until you choose a version. Device clocks and newer snapshots never decide which change wins. Unknown means unrecorded, including an explicitly cleared entry; skipped is a deliberate record.
@@ -19,6 +21,14 @@ The private deployment has a temporary whole-app Cloudflare Access gate restrict
 The owner creates accounts in the Accounts screen and shares initial credentials privately. There is no invitation email or password recovery email. Users can change their password in Settings; the owner can reset user passwords and deactivate accounts. Creating an account does not grant passage through the temporary Access gate.
 
 Self-registration is closed by default. The owner can enable it in Accounts. Opening access to other people also requires the separate deployment changes described in [deployment and recovery](docs/deployment.md).
+
+## Medication inventory
+
+Open Inventory to add a medication, its unit, quantity on hand, and low-stock threshold. Use Refill for incoming stock and Use / discard for quantities used outside a linked tracker or removed from the supply. History lets you undo or restore stock changes. To correct a count, record the difference as a refill or a use/discard. Archiving preserves stock history and deductions from existing links.
+
+In a tracker's settings, select an Inventory item and set the quantity per occurrence. Each newly confirmed named slot or extra log consumes that amount; clearing or skipping the entry, deleting an extra log, or using Undo restores it. Changes to notes or tracker links preserve the amount already recorded, and earlier confirmations are not backfilled. A tracker uses the same quantity for each of its slots and extra logs. Quantities support up to three decimal places, including fractional tablets.
+
+Refills recorded independently on offline devices add together on reconnect. Conflicting consumption or stock changes show "Quantity needs review" until resolved; no device's newer balance replaces another's changes. Negative stock remains visible and does not prevent activity logging. Low stock is a quantity threshold, with no refill ordering, pharmacy connection, or notification service.
 
 ## Development
 

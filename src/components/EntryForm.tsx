@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { message } from "../client/api";
 import { localInstants, savedInstant, type TimeChoice } from "../client/entry-time";
+import { consumptionFor, formatQuantity } from "../client/inventory";
 import type { Daymark } from "../client/useDaymark";
 import {
   type Entry,
@@ -54,7 +55,15 @@ export function EntryForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(selection.value.note);
-  const occurrences = [...materialize(daymark.operations).values()].filter((record) => {
+  const records = materialize(daymark.operations);
+  const stockUse = consumptionFor(
+    selection.tracker,
+    extra ? undefined : selection.value,
+    extra || state === "confirmed",
+  );
+  const supply = stockUse ? records.get(`inventory/${stockUse.itemId}`)?.heads[0].value : undefined;
+  const stockUnit = supply && "unit" in supply ? supply.unit : "units";
+  const occurrences = [...records.values()].filter((record) => {
     const value = record.value as ExtraEvent | null;
     return (
       record.kind === "event" &&
@@ -97,6 +106,11 @@ export function EntryForm({
                 time,
                 timeChoice,
               );
+              const inventory = consumptionFor(
+                selection.tracker,
+                extra ? undefined : selection.value,
+                extra || state === "confirmed",
+              );
               if (extra) {
                 const value: ExtraEvent = {
                   trackerId: selection.trackerId,
@@ -104,6 +118,7 @@ export function EntryForm({
                   occurredAt,
                   note,
                   deleted: false,
+                  ...(inventory ? { inventory } : {}),
                 };
                 await daymark.save("event", crypto.randomUUID(), value, []);
               } else {
@@ -111,7 +126,12 @@ export function EntryForm({
                 await daymark.save(
                   "entry",
                   key,
-                  { state, note, occurredAt: state === "confirmed" ? occurredAt : null },
+                  {
+                    state,
+                    note,
+                    occurredAt: state === "confirmed" ? occurredAt : null,
+                    ...(inventory ? { inventory } : {}),
+                  },
                   selection.parents,
                 );
               }
@@ -196,6 +216,11 @@ export function EntryForm({
             </label>
           )}
           <p className="hint">Extra occurrences are separate from the scheduled slot.</p>
+          {stockUse && (
+            <p className="hint">
+              Stock use: {formatQuantity(stockUse.quantity)} {stockUnit}.
+            </p>
+          )}
           <ErrorMessage text={error} />
           <button className="primary" type="submit" disabled={busy}>
             {busy ? "Saving..." : extra ? "Log occurrence" : "Save entry"}

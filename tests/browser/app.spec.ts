@@ -228,7 +228,11 @@ async function seed(page: Page, operations: Operation[]) {
     const { account } = (await (await fetch("/api/session")).json()) as { account: { id: string } };
     const response = await fetch("/api/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Daymark-Account": account.id },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Daymark-Account": account.id,
+        "X-Daymark-Sync": "2",
+      },
       body: JSON.stringify({ operations }),
     });
     window.dispatchEvent(new Event("focus"));
@@ -615,7 +619,9 @@ for (const action of ["Log extra occurrence", "Manage extra logs"]) {
           account: { id: string };
         };
         const result = (await (
-          await fetch("/api/sync?cursor=0", { headers: { "X-Daymark-Account": account.id } })
+          await fetch("/api/sync?cursor=0", {
+            headers: { "X-Daymark-Account": account.id, "X-Daymark-Sync": "2" },
+          })
         ).json()) as { operations: { operation: Operation }[] };
         return result.operations.map((row) => row.operation);
       });
