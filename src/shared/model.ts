@@ -1,12 +1,33 @@
+export const SYNC_PROTOCOL = "2";
+export const SYNC_PROTOCOL_HEADER = "X-Daymark-Sync";
 export const STATUSES = ["unknown", "confirmed", "skipped"] as const;
 export type Status = (typeof STATUSES)[number];
-export type Kind = "tracker" | "entry" | "event";
+export type Kind = "tracker" | "entry" | "event" | "inventory" | "stock";
 export interface Slot {
   id: string;
   name: string;
   time: string;
 }
+export interface InventoryUse {
+  itemId: string;
+  quantity: number;
+}
+export interface InventoryItem {
+  name: string;
+  unit: string;
+  lowStock: number;
+  archived: boolean;
+}
+export interface StockMovement {
+  itemId: string;
+  quantity: number;
+  reason: "opening" | "refill" | "used" | "adjustment";
+  note: string;
+  day: string;
+  deleted: boolean;
+}
 export interface Tracker {
+  inventory?: InventoryUse;
   name: string;
   category: string;
   slots: Slot[];
@@ -17,18 +38,20 @@ export interface Tracker {
   order: number;
 }
 export interface Entry {
+  inventory?: InventoryUse;
   state: Status;
   note: string;
   occurredAt: string | null;
 }
 export interface ExtraEvent {
+  inventory?: InventoryUse;
   trackerId: string;
   day: string;
   occurredAt: string | null;
   note: string;
   deleted: boolean;
 }
-export type Value = Tracker | Entry | ExtraEvent;
+export type Value = Tracker | Entry | ExtraEvent | InventoryItem | StockMovement;
 export interface Operation {
   id: string;
   kind: Kind;

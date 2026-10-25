@@ -1,4 +1,4 @@
-import { canonical } from "../src/shared/model";
+import { canonical, SYNC_PROTOCOL, SYNC_PROTOCOL_HEADER } from "../src/shared/model";
 import { LIMITS, validateOperation } from "../src/shared/validation";
 import { HttpError, json, readJson } from "./http";
 import type { Env } from "./types";
@@ -10,6 +10,12 @@ export async function sync(
   owner: string,
   requestId: string,
 ): Promise<Response> {
+  if (request.headers.get(SYNC_PROTOCOL_HEADER) !== SYNC_PROTOCOL)
+    throw new HttpError(
+      409,
+      "client_update_required",
+      "Reload Daymark while online to update the app. Your local changes are preserved.",
+    );
   if (request.method === "POST") {
     const body = await readJson(request);
     if (

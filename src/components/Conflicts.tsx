@@ -65,7 +65,7 @@ export function Conflicts({
               {"state" in op.value && <StatusIcon state={(op.value as Entry).state} />}
               <strong>{describeValue(op.value)}</strong>
             </div>
-            {"note" in op.value && (
+            {"occurredAt" in op.value && (
               <>
                 {"day" in op.value && <p>{op.value.day}</p>}
                 <p>

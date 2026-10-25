@@ -1,4 +1,4 @@
-import type { Operation } from "../shared/model";
+import { type Operation, SYNC_PROTOCOL, SYNC_PROTOCOL_HEADER } from "../shared/model";
 import { LIMITS } from "../shared/validation";
 import type { RemoteOperation, Store } from "./storage";
 
@@ -44,7 +44,11 @@ export class SyncEngine {
       credentials: "same-origin",
       redirect: "manual",
       signal: this.abort.signal,
-      headers: { "Content-Type": "application/json", "X-Daymark-Account": this.store.accountId },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Daymark-Account": this.store.accountId,
+        [SYNC_PROTOCOL_HEADER]: SYNC_PROTOCOL,
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (

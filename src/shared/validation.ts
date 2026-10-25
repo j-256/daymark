@@ -1,10 +1,13 @@
 import {
   type Entry,
-  type ExtraEvent,
+  type InventoryItem,
+  type InventoryUse,
   type Kind,
   type Operation,
   STATUSES,
+  type StockMovement,
   type Tracker,
+  type Value,
 } from "./model";
 
 export const LIMITS = Object.freeze({
@@ -26,8 +29,12 @@ const object = (v: unknown): Record<string, unknown> =>
   v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
     : invalid();
-const exact = (o: Record<string, unknown>, fields: string[]) => {
-  if (Object.keys(o).some((k) => !fields.includes(k)) || fields.some((k) => !(k in o))) invalid();
+const exact = (o: Record<string, unknown>, fields: string[], optional: string[] = []) => {
+  if (
+    Object.keys(o).some((k) => !fields.includes(k) && !optional.includes(k)) ||
+    fields.some((k) => !(k in o))
+  )
+    invalid();
 };
 const string = (v: unknown, max: number, min = 0): string =>
   typeof v === "string" && v.length >= min && v.length <= max && !v.includes("\0") ? v : invalid();
@@ -52,9 +59,52 @@ const timestamp = (v: unknown): string => {
 };
 const occurred = (v: unknown): string | null => (v === null ? null : timestamp(v));
 
+export const QUANTITY_SCALE = 1000;
+export const MAX_QUANTITY = 1000000000;
+const quantity = (v: unknown, minimum = 1): number =>
+  typeof v === "number" && Number.isSafeInteger(v) && v >= minimum && v <= MAX_QUANTITY
+    ? v
+    : invalid();
+function inventoryUse(v: unknown): InventoryUse {
+  const o = object(v);
+  exact(o, ["itemId", "quantity"]);
+  return { itemId: identifier(o.itemId), quantity: quantity(o.quantity) };
+}
+export function validateInventory(v: unknown): InventoryItem {
+  const o = object(v);
+  exact(o, ["name", "unit", "lowStock", "archived"]);
+  return {
+    name: string(o.name, LIMITS.name, 1).trim() || invalid(),
+    unit: string(o.unit, 24, 1).trim() || invalid(),
+    lowStock: quantity(o.lowStock, 0),
+    archived: bool(o.archived),
+  };
+}
+function validateMovement(v: unknown): StockMovement {
+  const o = object(v);
+  exact(o, ["itemId", "quantity", "reason", "note", "day", "deleted"]);
+  const amount = quantity(o.quantity, -MAX_QUANTITY);
+  if (!amount || !["opening", "refill", "used", "adjustment"].includes(o.reason as string))
+    invalid();
+  if ((o.reason === "opening" || o.reason === "refill") && amount < 0) invalid();
+  if (o.reason === "used" && amount > 0) invalid();
+  return {
+    itemId: identifier(o.itemId),
+    quantity: amount,
+    reason: o.reason as StockMovement["reason"],
+    note: string(o.note, LIMITS.note),
+    day: validDay(o.day),
+    deleted: bool(o.deleted),
+  };
+}
+
 export function validateTracker(v: unknown): Tracker {
   const o = object(v);
-  exact(o, ["name", "category", "slots", "schedule", "weekdays", "pinned", "archived", "order"]);
+  exact(
+    o,
+    ["name", "category", "slots", "schedule", "weekdays", "pinned", "archived", "order"],
+    ["inventory"],
+  );
   if (!["daily", "weekdays", "weekly", "as-needed"].includes(o.schedule as string)) invalid();
   if (!Array.isArray(o.slots) || !o.slots.length || o.slots.length > LIMITS.slots) invalid();
   const slots = o.slots.map((value) => {
@@ -83,6 +133,7 @@ export function validateTracker(v: unknown): Tracker {
     pinned: bool(o.pinned),
     archived: bool(o.archived),
     order: o.order,
+    ...("inventory" in o ? { inventory: inventoryUse(o.inventory) } : {}),
   };
 }
 
@@ -91,7 +142,7 @@ export function validateOperation(value: unknown): Operation {
   exact(o, ["id", "kind", "key", "parents", "value", "createdAt"]);
   const id = string(o.id, 36, 36);
   if (!UUID.test(id)) invalid();
-  if (!["tracker", "entry", "event"].includes(o.kind as string)) invalid();
+  if (!["tracker", "entry", "event", "inventory", "stock"].includes(o.kind as string)) invalid();
   const kind = o.kind as Kind;
   const key = string(o.key, 200, 1);
   const createdAt = timestamp(o.createdAt);
@@ -102,7 +153,7 @@ export function validateOperation(value: unknown): Operation {
     new Set(o.parents).size !== o.parents.length
   )
     invalid();
-  let validated: Tracker | Entry | ExtraEvent;
+  let validated: Value;
   if (kind === "tracker") {
     identifier(key);
     validated = validateTracker(o.value);
@@ -113,21 +164,27 @@ export function validateOperation(value: unknown): Operation {
     validDay(parts[1]);
     identifier(parts[2]);
     const e = object(o.value);
-    exact(e, ["state", "note", "occurredAt"]);
+    exact(e, ["state", "note", "occurredAt"], ["inventory"]);
+    if ("inventory" in e && e.state !== "confirmed") invalid();
     if (!STATUSES.includes(e.state as Entry["state"])) invalid();
     validated = {
       state: e.state as Entry["state"],
       note: string(e.note, LIMITS.note),
       occurredAt: occurred(e.occurredAt),
+      ...("inventory" in e ? { inventory: inventoryUse(e.inventory) } : {}),
     };
+  } else if (kind === "inventory" || kind === "stock") {
+    identifier(key);
+    validated = kind === "inventory" ? validateInventory(o.value) : validateMovement(o.value);
   } else {
     identifier(key);
     const e = object(o.value);
-    exact(e, ["trackerId", "day", "occurredAt", "note", "deleted"]);
+    exact(e, ["trackerId", "day", "occurredAt", "note", "deleted"], ["inventory"]);
     validated = {
       trackerId: identifier(e.trackerId),
       day: validDay(e.day),
       occurredAt: occurred(e.occurredAt),
+      ...("inventory" in e ? { inventory: inventoryUse(e.inventory) } : {}),
       note: string(e.note, LIMITS.note),
       deleted: bool(e.deleted),
     };

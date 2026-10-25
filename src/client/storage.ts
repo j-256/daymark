@@ -54,12 +54,17 @@ export function causalOrder(operations: Operation[], known?: Set<string>): Opera
   return result;
 }
 
+const STORAGE_PREFIX = "daymark-v2-";
+const LEGACY_STORAGE_PREFIX = "daymark-v1-";
+
 export class Store {
+  private importingLegacy?: Promise<void>;
   private listeners = new Set<() => void>();
   private channel?: BroadcastChannel;
   constructor(
     readonly accountId: string,
     private db: IDBPDatabase<Schema>,
+    private legacy?: IDBPDatabase<Schema>,
   ) {
     if (typeof window !== "undefined" && typeof BroadcastChannel !== "undefined") {
       this.channel = new BroadcastChannel(`daymark-${accountId}`);
@@ -74,10 +79,44 @@ export class Store {
     for (const fn of this.listeners) fn();
     if (broadcast) this.channel?.postMessage({ changed: true });
   }
+  private async importLegacy(): Promise<void> {
+    if (!this.legacy) return;
+    if (this.importingLegacy) return this.importingLegacy;
+    this.importingLegacy = (async () => {
+      const source = await this.legacy?.getAll("operations");
+      if (!source?.length) return;
+      const rows = source.map((row) => ({ ...row, operation: validateOperation(row.operation) }));
+      const tx = this.db.transaction("operations", "readwrite");
+      try {
+        for (const row of rows) {
+          const existing = await tx.store.get(row.id);
+          if (existing && canonical(existing.operation) !== canonical(row.operation))
+            throw new Error(
+              "Operation ID collision in older browser storage. Export backups before clearing storage.",
+            );
+          if (!existing) await tx.store.put(row);
+        }
+        await tx.done;
+      } catch (error) {
+        try {
+          tx.abort();
+        } catch {}
+        await tx.done.catch(() => {});
+        throw error;
+      }
+    })();
+    try {
+      await this.importingLegacy;
+    } finally {
+      this.importingLegacy = undefined;
+    }
+  }
   async list(): Promise<Operation[]> {
+    await this.importLegacy();
     return (await this.db.getAll("operations")).map((row) => row.operation);
   }
   async pending(): Promise<Operation[]> {
+    await this.importLegacy();
     return causalOrder(
       (await this.db.getAll("operations")).filter((row) => row.pending).map((row) => row.operation),
     );
@@ -235,16 +274,26 @@ export class Store {
   close(): void {
     this.channel?.close();
     this.db.close();
+    this.legacy?.close();
     this.listeners.clear();
   }
 }
 
-export async function openStore(accountId: string): Promise<Store> {
-  const db = await openDB<Schema>(`daymark-v1-${accountId}`, 1, {
+function openDatabase(name: string): Promise<IDBPDatabase<Schema>> {
+  return openDB<Schema>(name, 1, {
     upgrade(database) {
       database.createObjectStore("operations", { keyPath: "id" });
       database.createObjectStore("meta");
     },
   });
-  return new Store(accountId, db);
+}
+export async function openStore(accountId: string): Promise<Store> {
+  const legacy = await openDatabase(`${LEGACY_STORAGE_PREFIX}${accountId}`);
+  try {
+    const db = await openDatabase(`${STORAGE_PREFIX}${accountId}`);
+    return new Store(accountId, db, legacy);
+  } catch (error) {
+    legacy.close();
+    throw error;
+  }
 }

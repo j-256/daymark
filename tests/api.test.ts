@@ -37,6 +37,7 @@ const request = (path: string, cookie = "", body?: unknown, origin = ORIGIN) =>
         Origin: origin,
         "Content-Type": "application/json",
         "X-Daymark-Account": accountIds.get(cookie) ?? "",
+        "X-Daymark-Sync": "2",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
@@ -335,4 +336,55 @@ it("correlates quota failures without recording sensitive exception text", async
   } finally {
     log.mockRestore();
   }
+});
+
+it("requires a compatible sync client before accepting or exposing inventory fields", async () => {
+  for (const method of ["GET", "POST"]) {
+    const result = await worker.fetch(
+      new Request(`${ORIGIN}/api/sync`, {
+        method,
+        headers: {
+          Cookie: aliceCookie,
+          Origin: ORIGIN,
+          "Content-Type": "application/json",
+          "X-Daymark-Account": accountIds.get(aliceCookie) ?? "",
+        },
+        body: method === "POST" ? JSON.stringify({ operations: [op()] }) : undefined,
+      }),
+      env,
+      testContext,
+    );
+    expect(result.status).toBe(409);
+    expect(await result.json()).toMatchObject({ error: "client_update_required" });
+  }
+});
+
+it("syncs independent stock movements without duplication or cross-account visibility", async () => {
+  const itemId = crypto.randomUUID();
+  const base = { parents: [], createdAt: "2026-10-25T08:00:00.000Z" };
+  const operations = [
+    {
+      ...base,
+      id: crypto.randomUUID(),
+      kind: "inventory",
+      key: itemId,
+      value: { name: "Medication", unit: "tablets", lowStock: 5000, archived: false },
+    },
+    ...[30000, 60000].map((quantity) => ({
+      ...base,
+      id: crypto.randomUUID(),
+      kind: "stock",
+      key: crypto.randomUUID(),
+      value: { itemId, quantity, reason: "refill", note: "", day: "2026-10-25", deleted: false },
+    })),
+  ];
+  for (let attempt = 0; attempt < 2; attempt++)
+    expect((await request("/api/sync", aliceCookie, { operations })).status).toBe(200);
+  const found = await env.DB.prepare(
+    "SELECT owner, content FROM operations WHERE op_id IN (?1,?2,?3)",
+  )
+    .bind(...operations.map((op) => op.id))
+    .all<{ owner: string; content: string }>();
+  expect(found.results).toHaveLength(3);
+  expect(found.results.every((row) => row.owner === accountIds.get(aliceCookie))).toBe(true);
 });

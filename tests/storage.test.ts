@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import { openDB } from "idb";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openStore, type Store } from "../src/client/storage";
 import { SyncEngine } from "../src/client/sync";
@@ -238,4 +239,97 @@ it("preserves concurrent metadata through a group's observed parents", async () 
   ]);
   expect(edit.parents).toEqual([first.id]);
   expect(materialize(await s.list()).get(`entry/${key}`)?.conflict).toBe(true);
+});
+
+it("preserves inventory and fractional consumption through offline backups", async () => {
+  const source = await store();
+  await source.write("inventory", "medication", {
+    name: "Medication",
+    unit: "tablets",
+    lowStock: 5000,
+    archived: false,
+  });
+  await source.write("stock", "refill", {
+    itemId: "medication",
+    quantity: 30500,
+    reason: "refill",
+    note: "",
+    day: "2026-10-25",
+    deleted: false,
+  });
+  await source.write("entry", key, {
+    ...empty,
+    state: "confirmed",
+    inventory: { itemId: "medication", quantity: 500 },
+  });
+  const backup = await source.backup();
+  source.close();
+  const restored = await store(source.accountId);
+  await restored.importBackup(backup);
+  expect(await restored.list()).toHaveLength(3);
+  expect(await restored.pending()).toHaveLength(3);
+  const { stockBalances } = await import("../src/client/inventory");
+  expect(stockBalances(await restored.list()).get("medication")?.quantity).toBe(30000);
+});
+
+it("isolates legacy tabs while importing later unsynced edits without losing consumption", async () => {
+  const id = crypto.randomUUID();
+  const legacy = await openDB(`daymark-v1-${id}`, 1, {
+    upgrade(db) {
+      db.createObjectStore("operations", { keyPath: "id" });
+      db.createObjectStore("meta");
+    },
+  });
+  const original = {
+    id: crypto.randomUUID(),
+    kind: "entry" as const,
+    key,
+    parents: [],
+    createdAt: "2026-10-25T08:00:00.000Z",
+    value: empty,
+  };
+  await legacy.put("operations", { id: original.id, operation: original, pending: true });
+  const current = await store(id);
+  expect(await current.pending()).toEqual([original]);
+  await current.write("inventory", "medication", {
+    name: "Medication",
+    unit: "tablets",
+    lowStock: 5000,
+    archived: false,
+  });
+  await current.write("stock", "opening", {
+    itemId: "medication",
+    quantity: 10000,
+    reason: "opening",
+    day: "2026-10-25",
+    note: "",
+    deleted: false,
+  });
+  await current.write("entry", key, {
+    ...empty,
+    state: "confirmed",
+    inventory: { itemId: "medication", quantity: 1000 },
+  });
+  expect(await legacy.getAll("operations")).toHaveLength(1);
+  const { stockBalances } = await import("../src/client/inventory");
+  expect(stockBalances(await current.list()).get("medication")).toMatchObject({
+    quantity: 9000,
+    uncertain: false,
+  });
+  const oldEdit = {
+    ...original,
+    id: crypto.randomUUID(),
+    parents: [original.id],
+    value: { ...empty, state: "confirmed" as const, note: "Edit from an old tab" },
+  };
+  await legacy.put("operations", { id: oldEdit.id, operation: oldEdit, pending: true });
+  expect((await current.pending()).map((op) => op.id)).toContain(oldEdit.id);
+  expect(stockBalances(await current.list()).get("medication")?.uncertain).toBe(true);
+  await current.acknowledge([original.id, oldEdit.id]);
+  expect((await current.pending()).map((op) => op.id)).not.toContain(oldEdit.id);
+  expect((await legacy.get("operations", oldEdit.id)).pending).toBe(true);
+  current.close();
+  const reopened = await store(id);
+  expect((await reopened.pending()).map((op) => op.id)).not.toContain(oldEdit.id);
+  legacy.close();
 });
