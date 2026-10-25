@@ -72,4 +72,4 @@ Official limits were checked on 2026-10-24. This application uses no Queues, Dur
 
 A reorder can create an operation for each tracker in the displayed list when ranks need normalization. The browser persists the group atomically; server uploads use the same bounded batches as logging. Count each generated operation in D1 workload estimates rather than treating a reorder as a single row.
 
-The deployed account may use Workers Paid for reliable native password authentication. This does not require GitHub Actions billing: verification runs locally while Actions remains disabled.
+The deployed account may use Workers Paid for reliable native password authentication. GitHub Actions runs verification independently of Cloudflare deployment and has no production credentials. The local integration queue runs the same verification command before publishing approved changes; GitHub branch protection also requires the hosted `verify` check before merging.
