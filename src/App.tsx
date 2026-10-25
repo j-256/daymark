@@ -8,13 +8,13 @@ import {
   Package,
   Plus,
   RefreshCw,
-  Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { message } from "./client/api";
 import { applyAppearance, preference, THEME_KEY } from "./client/appearance";
 import { consumptionFor, stockBalances } from "./client/inventory";
+import { applyLayout, LAYOUT_KEY, type Layout, layoutPreference } from "./client/layout";
 import { type MoveDirection, reorderChanges } from "./client/ordering";
 import { useDaymark } from "./client/useDaymark";
 import { Admin } from "./components/Admin";
@@ -24,6 +24,7 @@ import { HistoryDetails } from "./components/HistoryDetails";
 import { Inventory } from "./components/Inventory";
 import { Login } from "./components/Login";
 import { Patterns } from "./components/Patterns";
+import { QuickSettings } from "./components/QuickSettings";
 import { Settings, type Theme } from "./components/Settings";
 import { TrackerForm, type TrackerItem } from "./components/TrackerForm";
 import { ErrorMessage, Sheet } from "./components/ui";
@@ -47,6 +48,7 @@ export function App() {
   const daymark = useDaymark();
   const [tab, setTab] = useState<Tab>("today");
   const [theme, setTheme] = useState<Theme>(preference);
+  const [layout, setLayout] = useState<Layout>(layoutPreference);
   const [trackerEdit, setTrackerEdit] = useState<TrackerItem | "new" | null>(null);
   const [entryEdit, setEntryEdit] = useState<EntrySelection | null>(null);
   const [history, setHistory] = useState<{ trackerId: string; day: string } | null>(null);
@@ -104,6 +106,15 @@ export function App() {
     }
   }
   const trackersById = new Map(allTrackers.map((item) => [item.id, item.value]));
+  useLayoutEffect(() => {
+    const update = () => applyLayout(layout);
+    update();
+    try {
+      localStorage.setItem(LAYOUT_KEY, layout);
+    } catch {}
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [layout]);
   useEffect(() => {
     applyAppearance(theme);
     try {
@@ -125,7 +136,9 @@ export function App() {
     setLogin(false);
     setToast(null);
     setCategory("");
-    setTab("today");
+    setTab(location.hash === "#settings" ? "settings" : "today");
+    if (!daymark.loading && location.hash === "#settings")
+      window.history.replaceState(null, "", location.pathname + location.search);
   }, [daymark.account?.id, daymark.loading]);
   useEffect(() => {
     if (!toast) return;
@@ -257,14 +270,21 @@ export function App() {
             <Plus />
           </button>
         )}
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Settings"
-          onClick={() => setTab("settings")}
-        >
-          <SettingsIcon />
-        </button>
+        <QuickSettings
+          theme={theme}
+          setTheme={setTheme}
+          layout={layout}
+          setLayout={setLayout}
+          canSync={Boolean(daymark.store && daymark.online)}
+          syncing={daymark.sync.status === "syncing"}
+          sync={() => void daymark.synchronize()?.catch((error) => notify(message(error)))}
+          canOpenSettings={Boolean(daymark.account)}
+          allSettings={() => {
+            if (location.pathname === "/admin" || location.pathname.startsWith("/admin/"))
+              location.assign("/#settings");
+            else setTab("settings");
+          }}
+        />
       </header>
       {location.pathname === "/admin" || location.pathname.startsWith("/admin/") ? (
         <Admin daymark={daymark} />
@@ -283,85 +303,94 @@ export function App() {
         </main>
       ) : (
         <>
-          <main className="view" id={tab}>
-            <ErrorMessage text={daymark.failure} />
-            {conflicts.length > 0 && (
-              <button
-                className="conflict-banner"
-                type="button"
-                aria-label={`Review ${conflicts.length} conflicting edits`}
-                onClick={() => setReview(true)}
-              >
-                <TriangleAlert />
-                <span>
-                  {conflicts.length} conflicting edit{conflicts.length === 1 ? "" : "s"} to review
-                </span>
-              </button>
-            )}
-            {tab !== "settings" &&
-              tab !== "trackers" &&
-              tab !== "inventory" &&
-              activeTrackers.length > 1 && (
-                <div className="filter-row">
-                  <select
-                    aria-label="Filter category"
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                  >
-                    <option value="">All categories</option>
-                    {[...new Set(activeTrackers.map((item) => item.value.category))].map(
-                      (value) => (
-                        <option value={value} key={value}>
-                          {value || "Personal"}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </div>
+          <main className="view" id={tab} key={tab}>
+            <div className="view-content">
+              <ErrorMessage text={daymark.failure} />
+              {conflicts.length > 0 && (
+                <button
+                  className="conflict-banner"
+                  type="button"
+                  aria-label={`Review ${conflicts.length} conflicting edits`}
+                  onClick={() => setReview(true)}
+                >
+                  <TriangleAlert />
+                  <span>
+                    {conflicts.length} conflicting edit{conflicts.length === 1 ? "" : "s"} to review
+                  </span>
+                </button>
               )}
-            {tab === "today" && lowStock.length > 0 && (
-              <button type="button" className="stock-notice" onClick={() => setTab("inventory")}>
-                {lowStock.length} medication{lowStock.length === 1 ? "" : "s"} low on stock
-              </button>
-            )}
-            {tab === "inventory" && (
-              <Inventory daymark={daymark} notify={notify} review={() => setReview(true)} />
-            )}
-            {tab === "today" && <Today {...common} add={() => setTrackerEdit("new")} />}
-            {tab === "weeks" && (
-              <Weeks
-                {...common}
-                rows={historyRows}
-                details={(row, day) => setHistory({ trackerId: row.trackerId, day })}
-              />
-            )}
-            {tab === "patterns" && (
-              <Patterns items={visibleTrackers} rows={historyRows} records={records} />
-            )}
-            {tab === "trackers" && (
-              <>
-                <Trackers
-                  items={allTrackers.filter((item) => item.value.archived === archived)}
-                  archived={archived}
-                  add={() => setTrackerEdit("new")}
-                  edit={setTrackerEdit}
-                  update={updateTracker}
-                  move={moveTracker}
-                  moving={orderingBusy}
+              {tab !== "settings" &&
+                tab !== "trackers" &&
+                tab !== "inventory" &&
+                activeTrackers.length > 1 && (
+                  <div className="filter-row">
+                    <select
+                      aria-label="Filter category"
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                    >
+                      <option value="">All categories</option>
+                      {[...new Set(activeTrackers.map((item) => item.value.category))].map(
+                        (value) => (
+                          <option value={value} key={value}>
+                            {value || "Personal"}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </div>
+                )}
+              {tab === "today" && lowStock.length > 0 && (
+                <button type="button" className="stock-notice" onClick={() => setTab("inventory")}>
+                  {lowStock.length} medication{lowStock.length === 1 ? "" : "s"} low on stock
+                </button>
+              )}
+              {tab === "inventory" && (
+                <Inventory daymark={daymark} notify={notify} review={() => setReview(true)} />
+              )}
+              {tab === "today" && <Today {...common} add={() => setTrackerEdit("new")} />}
+              {tab === "weeks" && (
+                <Weeks
+                  {...common}
+                  rows={historyRows}
+                  details={(row, day) => setHistory({ trackerId: row.trackerId, day })}
                 />
-                <label className="check-label">
-                  <input
-                    type="checkbox"
-                    checked={archived}
-                    onChange={(event) => setArchived(event.target.checked)}
+              )}
+              {tab === "patterns" && (
+                <Patterns items={visibleTrackers} rows={historyRows} records={records} />
+              )}
+              {tab === "trackers" && (
+                <>
+                  <Trackers
+                    items={allTrackers.filter((item) => item.value.archived === archived)}
+                    archived={archived}
+                    add={() => setTrackerEdit("new")}
+                    edit={setTrackerEdit}
+                    update={updateTracker}
+                    move={moveTracker}
+                    moving={orderingBusy}
                   />
-                  Show archived trackers
-                </label>
-              </>
-            )}
-            {tab === "settings" && (
-              <Settings daymark={daymark} theme={theme} setTheme={setTheme} notify={notify} />
-            )}
+                  <label className="check-label">
+                    <input
+                      type="checkbox"
+                      checked={archived}
+                      onChange={(event) => setArchived(event.target.checked)}
+                    />
+                    Show archived trackers
+                  </label>
+                </>
+              )}
+              {tab === "settings" && (
+                <Settings
+                  daymark={daymark}
+                  theme={theme}
+                  setTheme={setTheme}
+                  layout={layout}
+                  setLayout={setLayout}
+                  notify={notify}
+                />
+              )}
+            </div>
           </main>
           <nav className="tabs" aria-label="Main navigation">
             {(

@@ -968,51 +968,61 @@ details[open] summary::before {
   }
 }
 @media (min-width: 600px) {
-  body {
+  :root:not([data-layout="compact"]) body {
     padding: 24px;
   }
-  .app {
+  :root:not([data-layout="compact"]) .app {
     height: calc(100dvh - 48px);
     border: 1px solid var(--line);
     border-radius: 14px;
     box-shadow: 0 16px 60px var(--shadow);
   }
-  .view {
-    padding-inline: 24px;
-  }
-  .filter-row {
-    right: 24px;
-  }
-  .sheet {
-    border-radius: 14px;
-    margin: auto;
-  }
-  .quick-list {
-    max-width: 700px;
-  }
-  .settings-section {
-    max-width: 600px;
-  }
-  .login {
-    padding-top: 36px;
-  }
 }
-@media (min-width: 900px) {
-  .week-row {
-    display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
-    align-items: center;
-    padding: 4px 0;
-  }
-  .day-heads {
-    padding-left: 280px;
-  }
-  .week-label {
-    padding-right: 20px;
-  }
-  .pattern {
-    max-width: 700px;
-  }
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .view {
+  padding-inline: 24px;
+}
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .filter-row {
+  right: 24px;
+}
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .sheet {
+  border-radius: 14px;
+  margin: auto;
+}
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .quick-list {
+  max-width: 700px;
+}
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .settings-section {
+  max-width: 600px;
+}
+:root:is([data-layout-size="medium"], [data-layout-size="wide"]) .login {
+  padding-top: 36px;
+}
+:root[data-layout-size="wide"] .week-row {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: center;
+  padding: 4px 0;
+}
+:root[data-layout-size="wide"] .day-heads {
+  padding-left: 280px;
+}
+:root[data-layout-size="wide"] .week-label {
+  padding-right: 20px;
+}
+:root[data-layout-size="wide"] .pattern {
+  max-width: 700px;
+}
+:root[data-layout="compact"] .app {
+  max-width: 390px;
+}
+:root[data-layout="compact"] .sheet {
+  max-width: 390px;
+}
+.view-content {
+  min-width: 0;
+}
+:root[data-layout="wide"] .view-content {
+  min-width: 900px;
 }
 .conflict-fields {
   display: grid;
@@ -1266,4 +1276,34 @@ details[open] summary::before {
 
 .stock-heading .warning {
   color: var(--amber);
+}
+
+.quick-settings {
+  position: fixed;
+  margin: 0;
+  width: 272px;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px var(--shadow);
+  color: var(--ink);
+  background: var(--surface);
+}
+.quick-settings h2 {
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+.quick-settings label + label {
+  margin-top: 12px;
+}
+.quick-settings select {
+  margin-bottom: 0;
+}
+.quick-settings .hint {
+  margin-bottom: 2px;
+}
+.quick-settings .all-settings {
+  border-top: 1px solid var(--line);
 }

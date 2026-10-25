@@ -152,9 +152,10 @@ test("uses system dark mode, supports explicit themes, and fits narrow screens",
   await createTracker(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Appearance").selectOption("light");
+  await page.getByRole("button", { name: "All settings...", exact: true }).click();
+  await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption("light");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.getByLabel("Appearance").selectOption("system");
+  await page.getByRole("combobox", { name: "Appearance", exact: true }).selectOption("system");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.getByRole("button", { name: "Weeks", exact: true }).click();
   for (const width of [320, 360, 390]) {
@@ -191,12 +192,14 @@ test("isolates local history when switching app accounts", async ({ page, reques
   await createTracker(page, "Private A tracker");
   await expect(page.getByTestId("sync-status")).toHaveText(/Synced/);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "All settings...", exact: true }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
   await signIn(page, b);
   await expect(page.getByText("Private A tracker", { exact: true })).toHaveCount(0);
   await createTracker(page, "Private B tracker");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "All settings...", exact: true }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
   await signIn(page, a);

@@ -10,7 +10,7 @@ Daymark is a compact tracker for pills, personal care, maintenance, and chores. 
 - Keep logging offline after the first successful load; reconnect to merge changes across devices
 - Track medication stock, record refills, review stock history, and flag low supplies in Inventory
 - Optionally link a tracker to a supply and deduct a quantity for each newly confirmed slot or extra log; Undo restores stock
-- Use system, light, or dark appearance; system preference is the default
+- Open the gear dropdown for appearance, layout, Sync now, or All settings; system appearance and Automatic layout are the defaults
 
 Concurrent edits to different records merge automatically. Different edits to the same record remain visible as a conflict until you choose a version. Device clocks and newer snapshots never decide which change wins. Unknown means unrecorded, including an explicitly cleared entry; skipped is a deliberate record.
 
@@ -21,6 +21,12 @@ The private deployment has a temporary whole-app Cloudflare Access gate restrict
 The owner creates accounts in the Accounts screen and shares initial credentials privately. There is no invitation email or password recovery email. Users can change their password in Settings; the owner can reset user passwords and deactivate accounts. Creating an account does not grant passage through the temporary Access gate.
 
 Self-registration is closed by default. The owner can enable it in Accounts. Opening access to other people also requires the separate deployment changes described in [deployment and recovery](docs/deployment.md).
+
+## Appearance and layout
+
+The gear opens quick controls for System, Light, or Dark appearance and Automatic, Compact, or Wide layout. All settings opens the account and backup controls. These preferences stay on the device and work offline. Sync now is available after sign-in when the local account is ready and the browser is online.
+
+Automatic follows the window width. Compact caps the app at phone width, with stacked weekly labels and phone-sized dialogs. Wide uses desktop spacing and columns; on smaller screens the main content scrolls horizontally while the gear and navigation remain reachable. Choose Automatic to return to the normal responsive layout. The same choices are available in the full Settings screen.
 
 ## Medication inventory
 

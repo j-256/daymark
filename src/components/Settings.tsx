@@ -1,6 +1,7 @@
 import { Download, LogOut, ShieldCheck, Upload } from "lucide-react";
 import { useState } from "react";
 import { api, message } from "../client/api";
+import type { Layout } from "../client/layout";
 import type { Daymark } from "../client/useDaymark";
 import { LIMITS } from "../shared/validation";
 import { ErrorMessage } from "./ui";
@@ -10,11 +11,15 @@ export function Settings({
   daymark,
   theme,
   setTheme,
+  layout,
+  setLayout,
   notify,
 }: {
   daymark: Daymark;
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  layout: Layout;
+  setLayout: (layout: Layout) => void;
   notify: (text: string) => void;
 }) {
   const [error, setError] = useState("");
@@ -34,6 +39,18 @@ export function Settings({
             <option value="dark">Dark</option>
           </select>
         </label>
+        <label>
+          Layout
+          <select value={layout} onChange={(event) => setLayout(event.target.value as Layout)}>
+            <option value="auto">Automatic</option>
+            <option value="compact">Compact</option>
+            <option value="wide">Wide</option>
+          </select>
+        </label>
+        <p className="hint">
+          Automatic follows your window. Compact keeps a phone layout; Wide uses desktop spacing and
+          can scroll horizontally. Saved on this device.
+        </p>
       </section>
       <section className="settings-section">
         <h2>Your data</h2>
