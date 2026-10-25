@@ -61,7 +61,7 @@ npm run verify
 
 This checks formatting, TypeScript, domain and storage behavior, native authentication against local D1, browser flows, the built offline shell, production configuration, a Worker deployment dry run, and dependency security advisories. Linux CI also installs Chromium's system dependencies with `npx playwright install --with-deps chromium`.
 
-The GitHub repository is private and GitHub Actions is disabled at the repository level. The checked-in verification workflow also refuses to run while the repository is private. Publishing the repository and enabling Actions are deliberate owner actions; CI has no deployment credentials or automatic deploy job.
+The GitHub repository is public. The Verify workflow runs on pushes, pull requests, and manual dispatch, using Node 24 and Chromium on Linux. CI has no deployment credentials or automatic deploy job. Changes to `main` require a pull request and a passing `verify` check. The local integration queue also runs `npm run verify` before publishing an approved task and follows GitHub's branch protection when merging.
 
 ## Data and operational limits
 
