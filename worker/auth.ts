@@ -104,10 +104,3 @@ export async function requireOwner(
     throw new HttpError(403, "owner_required", "Owner access required");
   return user;
 }
-
-export async function registrationOpen(env: Env): Promise<boolean> {
-  const setting = await env.DB.prepare(
-    "SELECT value FROM app_settings WHERE key = 'registration'",
-  ).first<{ value: string }>();
-  return setting?.value === "open";
-}

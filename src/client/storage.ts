@@ -2,6 +2,9 @@ import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { canonical, type Kind, type Operation, operation, type Value } from "../shared/model";
 import { validateOperation } from "../shared/validation";
 
+export const LOCAL_WORKSPACE_ID = "local-workspace";
+const MAX_BACKUP_OPERATIONS = 50000;
+
 interface Stored {
   id: string;
   operation: Operation;
@@ -223,7 +226,10 @@ export class Store {
       operations: await this.list(),
     };
   }
-  async importBackup(input: unknown): Promise<number> {
+  async importBackup(
+    input: unknown,
+    options: { allowDifferentWorkspace?: boolean } = {},
+  ): Promise<number> {
     if (
       !input ||
       typeof input !== "object" ||
@@ -232,13 +238,15 @@ export class Store {
       !("version" in input) ||
       input.version !== 1 ||
       !("accountId" in input) ||
-      input.accountId !== this.accountId
+      typeof input.accountId !== "string" ||
+      !input.accountId ||
+      (input.accountId !== this.accountId && options.allowDifferentWorkspace !== true)
     )
-      throw new Error("This backup belongs to another account or uses an unsupported format");
+      throw new Error("This backup belongs to another workspace or uses an unsupported format");
     if (
       !("operations" in input) ||
       !Array.isArray(input.operations) ||
-      input.operations.length > 50000
+      input.operations.length > MAX_BACKUP_OPERATIONS
     )
       throw new Error("Invalid or oversized backup");
     const imported = input.operations.map(validateOperation);

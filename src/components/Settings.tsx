@@ -14,6 +14,7 @@ export function Settings({
   layout,
   setLayout,
   notify,
+  signIn,
 }: {
   daymark: Daymark;
   theme: Theme;
@@ -21,9 +22,11 @@ export function Settings({
   layout: Layout;
   setLayout: (layout: Layout) => void;
   notify: (text: string) => void;
+  signIn: () => void;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [allowDifferentWorkspace, setAllowDifferentWorkspace] = useState(false);
   return (
     <>
       <div className="page-title">
@@ -85,7 +88,7 @@ export function Settings({
           <input
             type="file"
             accept="application/json,.json"
-            disabled={busy}
+            disabled={busy || !daymark.store}
             onChange={async (event) => {
               const file = event.target.files?.[0];
               if (!file) return;
@@ -95,7 +98,7 @@ export function Settings({
                 if (file.size > LIMITS.backup)
                   throw new Error("Backup exceeds the 20 MB import limit");
                 const value = JSON.parse(await file.text());
-                const count = await daymark.store?.importBackup(value);
+                const count = await daymark.store?.importBackup(value, { allowDifferentWorkspace });
                 await daymark.refresh();
                 void daymark.synchronize()?.catch(() => {});
                 notify(`${count ?? 0} edits imported`);
@@ -108,35 +111,101 @@ export function Settings({
             }}
           />
         </label>
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={allowDifferentWorkspace}
+            onChange={(event) => setAllowDifferentWorkspace(event.target.checked)}
+          />
+          Import from another workspace
+        </label>
         <p className="hint">
-          Backups contain your complete activity history. Imports merge into this account without
-          replacing other edits.
+          Backups contain trackers, inventory, and complete activity history. Imports merge without
+          replacing edits.{" "}
+          {daymark.account
+            ? "Imported history will sync to this account."
+            : "Data stays on this device. Export backups before clearing browser data."}
         </p>
       </section>
-      <section className="settings-section">
-        <h2>Account</h2>
-        <p>
-          {daymark.account?.name}
-          <br />
-          <span className="muted">{daymark.account?.email}</span>
-        </p>
-        <details>
-          <summary>Change password</summary>
-          <form
-            onSubmit={async (event) => {
-              event.preventDefault();
-              const form = event.currentTarget;
-              const data = new FormData(form);
+      {!daymark.account ? (
+        <section className="settings-section">
+          <h2>Local workspace</h2>
+          <p>Free to use without an account. Your history stays in this browser.</p>
+          <p className="hint">
+            Sync accounts are invite-only. Signing in opens a separate workspace and does not upload
+            your local history. Use a backup to transfer it when you choose.
+          </p>
+          <button type="button" className="secondary" disabled={!daymark.online} onClick={signIn}>
+            Sign in for sync
+          </button>
+        </section>
+      ) : (
+        <section className="settings-section">
+          <h2>Account</h2>
+          <p>
+            {daymark.account?.name}
+            <br />
+            <span className="muted">{daymark.account?.email}</span>
+          </p>
+          <details>
+            <summary>Change password</summary>
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const form = event.currentTarget;
+                const data = new FormData(form);
+                setBusy(true);
+                setError("");
+                try {
+                  await api("/api/auth/change-password", {
+                    currentPassword: data.get("current"),
+                    newPassword: data.get("password"),
+                    revokeOtherSessions: true,
+                  });
+                  form.reset();
+                  notify("Password updated. Other sessions were signed out.");
+                } catch (e) {
+                  setError(message(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <label>
+                Current password
+                <input type="password" name="current" autoComplete="current-password" required />
+              </label>
+              <label>
+                New password
+                <input
+                  type="password"
+                  name="password"
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <button type="submit" className="secondary" disabled={busy || !daymark.online}>
+                Update password
+              </button>
+            </form>
+          </details>
+          {daymark.account?.role === "admin" && (
+            <a className="list-action" href="/admin">
+              <ShieldCheck />
+              Manage accounts
+            </a>
+          )}
+          <button
+            type="button"
+            className="list-action"
+            disabled={busy || !daymark.online}
+            onClick={async () => {
               setBusy(true);
               setError("");
               try {
-                await api("/api/auth/change-password", {
-                  currentPassword: data.get("current"),
-                  newPassword: data.get("password"),
-                  revokeOtherSessions: true,
-                });
-                form.reset();
-                notify("Password updated. Other sessions were signed out.");
+                await daymark.signOut();
               } catch (e) {
                 setError(message(e));
               } finally {
@@ -144,58 +213,17 @@ export function Settings({
               }
             }}
           >
-            <label>
-              Current password
-              <input type="password" name="current" autoComplete="current-password" required />
-            </label>
-            <label>
-              New password
-              <input
-                type="password"
-                name="password"
-                minLength={12}
-                maxLength={128}
-                autoComplete="new-password"
-                required
-              />
-            </label>
-            <button type="submit" className="secondary" disabled={busy || !daymark.online}>
-              Update password
-            </button>
-          </form>
-        </details>
-        {daymark.account?.role === "admin" && (
-          <a className="list-action" href="/admin">
-            <ShieldCheck />
-            Manage accounts
-          </a>
-        )}
-        <button
-          type="button"
-          className="list-action"
-          disabled={busy || !daymark.online}
-          onClick={async () => {
-            setBusy(true);
-            setError("");
-            try {
-              await daymark.signOut();
-            } catch (e) {
-              setError(message(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <LogOut />
-          Sign out
-        </button>
-        <p className="hint">
-          {daymark.sync.pending
-            ? `${daymark.sync.pending} changes are waiting to sync. They stay on this browser after sign-out.`
-            : "Local history stays on this browser after sign-out."}
-          {!daymark.online ? " Connect to sign out." : ""}
-        </p>
-      </section>
+            <LogOut />
+            Sign out
+          </button>
+          <p className="hint">
+            {daymark.sync.pending
+              ? `${daymark.sync.pending} changes are waiting to sync. They stay on this browser after sign-out.`
+              : "Local history stays on this browser after sign-out."}
+            {!daymark.online ? " Connect to sign out." : ""}
+          </p>
+        </section>
+      )}
       <ErrorMessage text={error} />
       <p className="hint">Daymark v1 · AGPL-3.0-only</p>
     </>

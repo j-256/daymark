@@ -13,15 +13,12 @@ export function Admin({ daymark }: { daymark: Daymark }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
-  const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reset, setReset] = useState<ManagedAccount | null>(null);
   const [notice, setNotice] = useState("");
   const load = useCallback(async () => {
     const data = await api<{ accounts: ManagedAccount[] }>("/api/admin/accounts");
     setAccounts(data.accounts);
-    const config = await api<{ registrationOpen: boolean }>("/api/config");
-    setOpen(config.registrationOpen);
   }, []);
   useEffect(() => {
     void api<{ setupRequired: boolean }>("/api/admin/bootstrap")
@@ -100,7 +97,7 @@ export function Admin({ daymark }: { daymark: Daymark }) {
           Daymark
         </a>
         <p className="hint">Sign in with the owner account to manage users.</p>
-        <Login signIn={daymark.signIn} registrationOpen={false} />
+        <Login signIn={daymark.signIn} />
       </main>
     );
   return (
@@ -116,8 +113,7 @@ export function Admin({ daymark }: { daymark: Daymark }) {
         </button>
       </div>
       <p className="hint">
-        Accounts are created manually. Other users remain behind the temporary owner-only Access
-        gate until you change that policy.
+        The app is free to use locally. Create accounts here to invite people to online sync.
       </p>
       <ErrorMessage text={error} />
       {notice && (
@@ -125,34 +121,6 @@ export function Admin({ daymark }: { daymark: Daymark }) {
           {notice}
         </p>
       )}
-      <section className="settings-section">
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={open}
-            disabled={busy}
-            onChange={async (event) => {
-              setBusy(true);
-              setError("");
-              const enabled = event.target.checked;
-              try {
-                await api("/api/admin/registration", { open: enabled });
-                setOpen(enabled);
-                setNotice(
-                  enabled
-                    ? "Self-registration enabled. The outer Access gate is unchanged."
-                    : "Invite-only registration restored.",
-                );
-              } catch (e) {
-                setError(message(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-          Allow self-registration
-        </label>
-      </section>
       {accounts.map((user) => (
         <article className="account-row" key={user.id}>
           <div>

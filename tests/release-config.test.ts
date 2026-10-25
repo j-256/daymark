@@ -24,7 +24,7 @@ function fixture() {
 }
 const check = (cwd: string) =>
   spawnSync(process.execPath, [resolve("scripts/check-config.mjs")], { cwd, encoding: "utf8" });
-it("accepts the protected release configuration and known shell files", () => {
+it("accepts the public release configuration with protected administration and known shell files", () => {
   expect(check(fixture()).status).toBe(0);
 });
 for (const name of [".DS_Store", "assets/.DS_Store", "private-backup.sql"]) {

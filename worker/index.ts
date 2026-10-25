@@ -1,6 +1,6 @@
 import { ValidationError } from "../src/shared/validation";
 import { adminRoute } from "./accounts";
-import { accessEmail, account, createAuth, registrationOpen } from "./auth";
+import { accessEmail, account, createAuth } from "./auth";
 import { HttpError, json, readJson } from "./http";
 import { sync } from "./sync";
 import type { Env } from "./types";
@@ -34,19 +34,18 @@ export default {
       if (path.startsWith("/api/admin/")) response = await adminRoute(request, env, ctx);
       else if (path.startsWith("/api/auth/")) {
         if (!AUTH_PATHS.has(path)) throw new HttpError(404, "not_found", "Not found");
-        const open = await registrationOpen(env);
-        if (path.endsWith("/sign-up/email") && !open)
+        if (path.endsWith("/sign-up/email"))
           throw new HttpError(403, "invite_only", "Accounts are created by the administrator");
-        response = await createAuth(env, open).handler(request);
+        response = await createAuth(env).handler(request);
       } else if (path === "/api/config")
         response = json({
-          registrationOpen: await registrationOpen(env),
+          registrationOpen: false,
           build: env.BUILD_ID ?? "development",
         });
       else if (path === "/api/session")
         response = json({
           account: await account(request, env),
-          registrationOpen: await registrationOpen(env),
+          registrationOpen: false,
           build: env.BUILD_ID ?? "development",
         });
       else if (path === "/api/sync") {

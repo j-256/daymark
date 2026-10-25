@@ -18,6 +18,44 @@ afterEach(() => {
 });
 
 describe("durable account storage", () => {
+  it("imports another workspace only with explicit consent and preserves duplicate and collision guards", async () => {
+    const source = await store();
+    const target = await store();
+    await source.write("entry", key, empty);
+    const backup = await source.backup();
+    await expect(target.importBackup(backup)).rejects.toThrow(/account|workspace/i);
+    expect(await target.list()).toEqual([]);
+    expect(await target.importBackup(backup, { allowDifferentWorkspace: true })).toBe(1);
+    expect(await target.importBackup(backup, { allowDifferentWorkspace: true })).toBe(0);
+    expect(await target.pending()).toHaveLength(1);
+    await expect(
+      target.importBackup(
+        {
+          ...backup,
+          operations: [{ ...backup.operations[0], value: { ...empty, note: "Changed" } }],
+        },
+        { allowDifferentWorkspace: true },
+      ),
+    ).rejects.toThrow(/conflicting/i);
+    expect(await target.list()).toEqual(backup.operations);
+  });
+  it("validates foreign backup identity and causal history even with import consent", async () => {
+    const target = await store();
+    const source = await store();
+    const first = await source.write("entry", key, empty);
+    const backup = await source.backup();
+    for (const accountId of [undefined, null, "", 42])
+      await expect(
+        target.importBackup({ ...backup, accountId }, { allowDifferentWorkspace: true }),
+      ).rejects.toThrow();
+    await expect(
+      target.importBackup(
+        { ...backup, operations: [{ ...first, parents: [crypto.randomUUID()] }] },
+        { allowDifferentWorkspace: true },
+      ),
+    ).rejects.toThrow(/incomplete/i);
+    expect(await target.list()).toEqual([]);
+  });
   it("preserves updates that arrived after an editor's observed snapshot", async () => {
     const s = await store();
     const a = await s.write("entry", key, empty);
@@ -78,7 +116,7 @@ describe("durable account storage", () => {
     const backup = await s.backup();
     await s.importBackup(backup);
     expect(await s.list()).toHaveLength(1);
-    await expect((await store()).importBackup(backup)).rejects.toThrow(/account/i);
+    await expect((await store()).importBackup(backup)).rejects.toThrow(/workspace/i);
   });
   it("rejects malformed, cyclic, and colliding backups without partial writes", async () => {
     const s = await store();

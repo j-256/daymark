@@ -25,12 +25,13 @@ export default defineConfig({
         };
         walk("dist");
         files.sort();
-        const hash = createHash("sha256");
+        const workerSource = readFileSync("public/sw.js", "utf8");
+        const hash = createHash("sha256").update(workerSource);
         for (const file of files) {
           hash.update(file);
           hash.update(readFileSync(join("dist", file)));
         }
-        const source = readFileSync("public/sw.js", "utf8")
+        const source = workerSource
           .replaceAll("__CACHE_VERSION__", hash.digest("hex").slice(0, 16))
           .replace(
             "const FILES = [];",

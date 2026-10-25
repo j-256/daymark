@@ -278,18 +278,10 @@ describe("owner account management", () => {
         .status,
     ).toBe(403);
   });
-  it("opens and closes self-registration without changing the account model", async () => {
-    expect((await ownerRequest("/api/admin/registration", { open: true })).status).toBe(200);
-    expect(
-      (
-        await request("/api/auth/sign-up/email", "", {
-          name: "Self registration",
-          email: "self@example.com",
-          password,
-        })
-      ).status,
-    ).toBe(200);
-    expect((await ownerRequest("/api/admin/registration", { open: false })).status).toBe(200);
+  it("keeps public signup closed even when a legacy setting is open", async () => {
+    expect((await ownerRequest("/api/admin/registration", { open: true })).status).toBe(403);
+    await env.DB.prepare("UPDATE app_settings SET value = 'open' WHERE key = 'registration'").run();
+    expect(await (await request("/api/config")).json()).toMatchObject({ registrationOpen: false });
     expect(
       (
         await request("/api/auth/sign-up/email", "", {
@@ -299,6 +291,7 @@ describe("owner account management", () => {
         })
       ).status,
     ).toBe(403);
+    expect((await ownerRequest("/api/admin/registration", { open: false })).status).toBe(200);
   });
   it("cannot deactivate the owner or administer with a native session alone", async () => {
     const data = (await (await request("/api/session", ownerCookie)).json()) as {
@@ -325,7 +318,11 @@ it("correlates quota failures without recording sensitive exception text", async
         },
       } as unknown as D1Database,
     };
-    const response = await worker.fetch(new Request(`${ORIGIN}/api/config`), broken, testContext);
+    const response = await worker.fetch(
+      new Request(`${ORIGIN}/api/admin/bootstrap`),
+      broken,
+      ownerContext,
+    );
     expect(response.status).toBe(503);
     const payload = (await response.json()) as { requestId: string };
     const record = log.mock.calls

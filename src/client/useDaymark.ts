@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heads, type Kind, type Operation, type Value } from "../shared/model";
 import { type Account, api } from "./api";
-import { type LocalChange, openStore, type Store } from "./storage";
+import { LOCAL_WORKSPACE_ID, type LocalChange, openStore, type Store } from "./storage";
 import { SyncEngine, type SyncState } from "./sync";
 
 const ACCOUNT_KEY = "daymark-last-account-v1";
@@ -15,22 +15,22 @@ function cachedAccount(): Account | null {
   }
 }
 export function useDaymark() {
-  const [account, setAccount] = useState<Account | null>(null);
+  const [account, setAccount] = useState<Account | null>(cachedAccount);
   const [loading, setLoading] = useState(true);
   const [store, setStore] = useState<Store | null>(null);
   const [snapshot, setSnapshot] = useState<{ accountId: string | null; values: Operation[] }>({
     accountId: null,
     values: [],
   });
-  const operations = snapshot.accountId === account?.id ? snapshot.values : [];
+  const workspaceId = account?.id ?? LOCAL_WORKSPACE_ID;
+  const operations = snapshot.accountId === workspaceId ? snapshot.values : [];
   const [sync, setSync] = useState<SyncState>(initialSync);
   const [online, setOnline] = useState(navigator.onLine);
   const [failure, setFailure] = useState("");
-  const [registrationOpen, setRegistrationOpen] = useState(false);
   const engine = useRef<SyncEngine | null>(null);
   const activeAccount = useRef<string | null>(null);
   const sessionRequest = useRef(0);
-  activeAccount.current = account?.id ?? null;
+  activeAccount.current = workspaceId;
   const refresh = useCallback(async (target: Store) => {
     const data = await target.list();
     if (activeAccount.current === target.accountId)
@@ -40,33 +40,26 @@ export function useDaymark() {
     const version = ++sessionRequest.current;
     const data = await api<{ account: Account; registrationOpen: boolean }>("/api/session");
     if (version !== sessionRequest.current) return data.account;
-    localStorage.setItem(ACCOUNT_KEY, JSON.stringify(data.account));
+    try {
+      localStorage.setItem(ACCOUNT_KEY, JSON.stringify(data.account));
+    } catch {}
     setAccount(data.account);
-    setRegistrationOpen(data.registrationOpen);
     return data.account;
   }, []);
   useEffect(() => {
-    let active = true;
-    const cached = cachedAccount();
-    if (cached) setAccount(cached);
-    Promise.allSettled([
-      fetchSession(),
-      api<{ registrationOpen: boolean }>("/api/config").then((data) => {
-        if (active) setRegistrationOpen(data.registrationOpen);
-      }),
-    ]).finally(() => {
-      if (active) setLoading(false);
-    });
+    if (cachedAccount() && navigator.onLine) void fetchSession().catch(() => {});
+    const connectivity = () => setOnline(navigator.onLine);
+    window.addEventListener("online", connectivity);
+    window.addEventListener("offline", connectivity);
     return () => {
-      active = false;
+      sessionRequest.current++;
+      window.removeEventListener("online", connectivity);
+      window.removeEventListener("offline", connectivity);
     };
   }, [fetchSession]);
   useEffect(() => {
-    if (!account) {
-      setStore(null);
-      setSnapshot({ accountId: null, values: [] });
-      return;
-    }
+    setLoading(true);
+    setSync(initialSync);
     let disposed = false;
     let opened: Store | undefined;
     let unsubscribe: (() => void) | undefined;
@@ -82,7 +75,7 @@ export function useDaymark() {
     const focus = () => {
       if (!document.hidden) run();
     };
-    void openStore(account.id)
+    void openStore(workspaceId)
       .then(async (value) => {
         if (disposed) {
           value.close();
@@ -92,11 +85,18 @@ export function useDaymark() {
         setStore(value);
         await refresh(value);
         if (disposed) return;
+        setLoading(false);
+        setFailure("");
+        unsubscribe = value.subscribe(() => {
+          if (!disposed) void refresh(value);
+        });
+        if (workspaceId === LOCAL_WORKSPACE_ID) return;
         const instance = new SyncEngine(value);
         instance.onState = (state) => {
           if (!disposed) setSync(state);
         };
         engine.current = instance;
+        unsubscribe();
         unsubscribe = value.subscribe(() => {
           if (!disposed) {
             void refresh(value);
@@ -112,10 +112,12 @@ export function useDaymark() {
         run();
       })
       .catch(() => {
-        if (!disposed)
+        if (!disposed) {
+          setLoading(false);
           setFailure(
             "Browser storage could not be opened. Logging is unavailable until storage is restored.",
           );
+        }
       });
     return () => {
       disposed = true;
@@ -129,13 +131,13 @@ export function useDaymark() {
       engine.current = null;
       opened?.close();
     };
-  }, [account?.id, account, refresh]);
+  }, [workspaceId, refresh]);
   const readyStore = () => {
     if (
       !store ||
-      store.accountId !== account?.id ||
-      snapshot.accountId !== account.id ||
-      activeAccount.current !== account.id
+      store.accountId !== workspaceId ||
+      snapshot.accountId !== workspaceId ||
+      activeAccount.current !== workspaceId
     )
       throw new Error("Browser storage is not ready for this account");
     return store;
@@ -159,26 +161,26 @@ export function useDaymark() {
     if (navigator.onLine) void engine.current?.run().catch(() => {});
     return op;
   };
-  const signIn = async (email: string, password: string, signUp = false, name = "") => {
-    await api(`/api/auth/${signUp ? "sign-up/email" : "sign-in/email"}`, {
-      email,
-      password,
-      ...(signUp ? { name } : {}),
-    });
-    await fetchSession();
+  const signIn = async (email: string, password: string) => {
+    const previousWorkspace = activeAccount.current;
+    await api("/api/auth/sign-in/email", { email, password });
+    const signedIn = await fetchSession();
     setFailure("");
-    void engine.current?.run().catch(() => {});
+    if (signedIn.id === previousWorkspace && activeAccount.current === signedIn.id)
+      void engine.current?.run().catch(() => {});
   };
   const signOut = async () => {
     sessionRequest.current++;
     await api("/api/auth/sign-out", {});
-    localStorage.removeItem(ACCOUNT_KEY);
+    try {
+      localStorage.removeItem(ACCOUNT_KEY);
+    } catch {}
     engine.current?.stop();
     setAccount(null);
     setSync(initialSync);
   };
   const matchingStore =
-    store?.accountId === account?.id && snapshot.accountId === account?.id ? store : null;
+    store?.accountId === workspaceId && snapshot.accountId === workspaceId ? store : null;
   return {
     account,
     loading,
@@ -188,13 +190,12 @@ export function useDaymark() {
     online,
     failure,
     setFailure,
-    registrationOpen,
     save,
     saveBatch,
     signIn,
     signOut,
     synchronize: () => engine.current?.run(),
-    refresh: () => (store ? refresh(store) : Promise.resolve()),
+    refresh: () => (matchingStore ? refresh(matchingStore) : Promise.resolve()),
   };
 }
 export type Daymark = ReturnType<typeof useDaymark>;

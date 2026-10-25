@@ -41,18 +41,23 @@ self.addEventListener("fetch", (event) => {
   if (
     event.request.method !== "GET" ||
     url.origin !== self.location.origin ||
+    url.pathname === "/api" ||
     url.pathname.startsWith("/api/") ||
+    url.pathname === "/admin" ||
+    url.pathname.startsWith("/admin/") ||
     url.pathname.startsWith("/cdn-cgi/") ||
     url.searchParams.has("access-login")
   )
     return;
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(async () => (await caches.match("/")) || Response.error()),
+      caches.open(CACHE).then(async (cache) => (await cache.match("/")) || fetch(event.request)),
     );
   } else if (FILES.includes(url.pathname)) {
     event.respondWith(
-      caches.match(url.pathname).then((response) => response || fetch(event.request)),
+      caches
+        .open(CACHE)
+        .then(async (cache) => (await cache.match(url.pathname)) || fetch(event.request)),
     );
   }
 });
