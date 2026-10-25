@@ -97,10 +97,11 @@ export async function adminRoute(
     const body = await readJson(request);
     if (typeof body.open !== "boolean")
       throw new HttpError(400, "invalid_setting", "Invalid registration setting");
-    await env.DB.prepare("UPDATE app_settings SET value = ? WHERE key = 'registration'")
-      .bind(body.open ? "open" : "invite-only")
-      .run();
-    return json({ open: body.open });
+    if (body.open) throw new HttpError(403, "invite_only", "Sync accounts are invite-only");
+    await env.DB.prepare(
+      "UPDATE app_settings SET value = 'invite-only' WHERE key = 'registration'",
+    ).run();
+    return json({ open: false });
   }
   if (path === "/api/admin/reset-password" && request.method === "POST") {
     const body = await readJson(request);

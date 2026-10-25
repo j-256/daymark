@@ -34,9 +34,11 @@ async function account(request: APIRequestContext) {
 }
 async function signIn(page: Page, email: string) {
   await page.goto("/");
+  await page.getByRole("button", { name: "Sign in for sync", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("sync-status")).toHaveText("Synced");
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
 }
 async function inventory(page: Page) {

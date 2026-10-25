@@ -31,9 +31,11 @@ async function signIn(page: Page, request: APIRequestContext) {
     ).status(),
   ).toBe(201);
   await page.goto("/");
+  await page.getByRole("button", { name: "Sign in for sync", exact: true }).click();
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("sync-status")).toHaveText("Synced");
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
 }
 const gear = (page: Page) => page.getByRole("button", { name: "Settings", exact: true });
@@ -157,7 +159,7 @@ test("invalid preferences fall back to Automatic and guest controls stay availab
   await expect(popup(page).getByRole("button", { name: "Sync now", exact: true })).toBeDisabled();
   await expect(
     popup(page).getByRole("button", { name: "All settings...", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.keyboard.press("Escape");
   await expect(gear(page)).toHaveAttribute("aria-expanded", "false");
 });

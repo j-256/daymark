@@ -3,8 +3,10 @@ import {
   ChartNoAxesCombined,
   CloudCheck,
   CloudOff,
+  HardDrive,
   LayoutGrid,
   ListChecks,
+  LogIn,
   Package,
   Plus,
   RefreshCw,
@@ -260,7 +262,29 @@ export function App() {
             <span>{syncLabel}</span>
           </button>
         )}
-        {daymark.account && (
+        {!daymark.account && (
+          <>
+            <button
+              type="button"
+              className="sync-chip"
+              data-testid="local-status"
+              onClick={() => setTab("settings")}
+            >
+              <HardDrive />
+              <span>On this device</span>
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Sign in for sync"
+              title="Sign in for sync"
+              onClick={() => setLogin(true)}
+            >
+              <LogIn />
+            </button>
+          </>
+        )}
+        {daymark.store && (
           <button
             className="icon-button"
             type="button"
@@ -275,10 +299,10 @@ export function App() {
           setTheme={setTheme}
           layout={layout}
           setLayout={setLayout}
-          canSync={Boolean(daymark.store && daymark.online)}
+          canSync={Boolean(daymark.account && daymark.store && daymark.online)}
           syncing={daymark.sync.status === "syncing"}
           sync={() => void daymark.synchronize()?.catch((error) => notify(message(error)))}
-          canOpenSettings={Boolean(daymark.account)}
+          canOpenSettings={Boolean(daymark.store)}
           allSettings={() => {
             if (location.pathname === "/admin" || location.pathname.startsWith("/admin/"))
               location.assign("/#settings");
@@ -291,10 +315,6 @@ export function App() {
       ) : daymark.loading && !daymark.account ? (
         <main className="view">
           <p className="empty">Opening Daymark...</p>
-        </main>
-      ) : !daymark.account ? (
-        <main className="view">
-          <Login signIn={daymark.signIn} registrationOpen={daymark.registrationOpen} />
         </main>
       ) : !daymark.store ? (
         <main className="view">
@@ -388,6 +408,7 @@ export function App() {
                   layout={layout}
                   setLayout={setLayout}
                   notify={notify}
+                  signIn={() => setLogin(true)}
                 />
               )}
             </div>
@@ -415,7 +436,7 @@ export function App() {
           </nav>
         </>
       )}
-      {toast && daymark.account && (
+      {toast && daymark.store && (
         <div className="toast" role="status">
           <span>{toast.text}</span>
           {toast.undo && (
@@ -537,8 +558,8 @@ export function App() {
         </Sheet>
       )}
       {login && (
-        <Sheet title="Resume syncing" close={() => setLogin(false)}>
-          <Login signIn={daymark.signIn} registrationOpen={false} close={() => setLogin(false)} />
+        <Sheet title="Online sync" close={() => setLogin(false)}>
+          <Login signIn={daymark.signIn} close={() => setLogin(false)} />
         </Sheet>
       )}
     </div>

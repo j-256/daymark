@@ -18,7 +18,7 @@ if (args.length === 1 && ["-h", "--help"].includes(args[0])) {
     assert.deepEqual(config.routes, [{ pattern: "daymark.lasers.app", custom_domain: true }]);
     assert.equal(config.assets.run_worker_first, true);
     assert.equal(config.vars.APP_ORIGIN, "https://daymark.lasers.app");
-    assert.equal(config.vars.ACCESS_REQUIRED, "true");
+    assert.equal(config.vars.ACCESS_REQUIRED, "false");
     assert.match(config.vars.ACCESS_ISSUER, /^https:\/\/[^/]+\.cloudflareaccess\.com$/);
     for (const key of ["ACCESS_AUDIENCE", "ADMIN_ACCESS_AUDIENCE"])
       assert.match(config.vars[key], /^[a-f0-9]{64}$/);

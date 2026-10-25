@@ -9,13 +9,16 @@ function Harness(){const state=useDaymark();window.daymark=state;return React.cr
 createRoot(document.getElementById('root')).render(React.createElement(Harness));
 `;
 const storage = `
+export const LOCAL_WORKSPACE_ID="local-workspace";
 export const openStore=async accountId=>({accountId,close(){},subscribe(){return ()=>{}},list(){return accountId==='B'?new Promise(resolve=>window.releaseB=()=>resolve([{key:'PRIVATE-B'}])):Promise.resolve([{key:'PRIVATE-A'}]);}});
 `;
 const api = `
 let account={id:'A',name:'A',email:'a@example.com',role:'user'};
-export async function api(path){if(path.includes('sign-in')) account={...account,id:'B'};return {account,registrationOpen:false};}
+export async function api(path,body){if(path.includes('sign-in') && body.email==='b@example.com') account={...account,id:'B'};return {account,registrationOpen:false};}
 `;
-test("withholds the previous account's history while a new account opens", async ({ browser }) => {
+test("resumes same-account sync and withholds previous history while another account opens", async ({
+  browser,
+}) => {
   const result = await build({
     configFile: false,
     logLevel: "silent",
@@ -37,7 +40,7 @@ test("withholds the previous account's history while a new account opens", async
           if (id === "\0mock./storage") return storage;
           if (id === "\0mock./api") return api;
           if (id === "\0mock./sync")
-            return "export class SyncEngine {async run(){} async refreshPending(){} stop(){}}";
+            return "export class SyncEngine {async run(){window.syncRuns=(window.syncRuns||0)+1} async refreshPending(){} stop(){}}";
         },
       },
     ],
@@ -57,8 +60,27 @@ test("withholds the previous account's history while a new account opens", async
     route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.goto("http://localhost:5184/harness");
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "daymark-last-account-v1",
+      JSON.stringify({ id: "A", name: "A", email: "a@example.com", role: "user" }),
+    ),
+  );
   await page.addScriptTag({ content: code });
   await expect(page.locator("pre")).toContainText("PRIVATE-A");
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { syncRuns: number }).syncRuns))
+    .toBe(1);
+  await page.evaluate(() =>
+    (
+      window as unknown as {
+        daymark: { signIn: (email: string, password: string) => Promise<void> };
+      }
+    ).daymark.signIn("a@example.com", "unused"),
+  );
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { syncRuns: number }).syncRuns))
+    .toBe(2);
   await page.evaluate(() =>
     (
       window as unknown as {
@@ -70,6 +92,7 @@ test("withholds the previous account's history while a new account opens", async
     () => typeof (window as unknown as { releaseB?: () => void }).releaseB === "function",
   );
   await expect(page.locator("pre")).not.toContainText("PRIVATE-A");
+  expect(await page.evaluate(() => (window as unknown as { syncRuns: number }).syncRuns)).toBe(2);
   await page.evaluate(() => (window as unknown as { releaseB: () => void }).releaseB());
   await expect(page.locator("pre")).toContainText("PRIVATE-B");
   await context.close();

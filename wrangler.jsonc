@@ -23,7 +23,7 @@
   ],
   "vars": {
     "APP_ORIGIN": "https://daymark.lasers.app",
-    "ACCESS_REQUIRED": "true",
+    "ACCESS_REQUIRED": "false",
     "ACCESS_ISSUER": "https://j256.cloudflareaccess.com",
     "ACCESS_AUDIENCE": "8ee74f3ff45a4287d3cae08b0cb195c2f94fcbc559527f99cae213a551c7cf10",
     "ADMIN_ACCESS_AUDIENCE": "16d244a8bc2118401f1e782cff0eee857be960cb8ed26eadbbe390e6c435cc91"

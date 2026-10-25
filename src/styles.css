@@ -833,6 +833,7 @@ legend {
   width: 18px;
 }
 .upload-label {
+  flex-direction: row;
   position: relative;
   cursor: pointer;
   font-weight: 400;

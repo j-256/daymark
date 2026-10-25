@@ -7,7 +7,9 @@ Daymark is a compact tracker for pills, personal care, maintenance, and chores. 
 - Give a tracker separate named slots, such as morning and evening; log additional occurrences separately
 - Use Trackers > Reorder to move items up or down; changes save offline and sync across devices. Weekly chores stay complete for their week
 - Explore 7, 28, or 90 days of patterns, per-slot counts, and average gaps within the selected range
-- Keep logging offline after the first successful load; reconnect to merge changes across devices
+- Use every tracking feature for free without signing in; history stays in this browser
+- Keep logging offline after the app finishes downloading; invited accounts can sync across devices
+- Export complete JSON backups and import them on another device or into an invited account
 - Track medication stock, record refills, review stock history, and flag low supplies in Inventory
 - Optionally link a tracker to a supply and deduct a quantity for each newly confirmed slot or extra log; Undo restores stock
 - Open the gear dropdown for appearance, layout, Sync now, or All settings; system appearance and Automatic layout are the defaults
@@ -16,15 +18,17 @@ Concurrent edits to different records merge automatically. Different edits to th
 
 ## First use
 
-The private deployment has a temporary whole-app Cloudflare Access gate restricted to the owner. Visit [/admin](https://daymark.lasers.app/admin), authenticate through Access, and choose the owner account's name and password. Use that app account to sign in to Daymark. Access and the Daymark account are separate sign-ins.
+Open Daymark and start adding trackers. No account is needed for Today, Weeks, Patterns, Inventory, or Settings. "On this device" identifies the local workspace. Install the PWA from your browser for a home-screen shortcut; keep the first visit online until the service worker has cached the complete app.
 
-The owner creates accounts in the Accounts screen and shares initial credentials privately. There is no invitation email or password recovery email. Users can change their password in Settings; the owner can reset user passwords and deactivate accounts. Creating an account does not grant passage through the temporary Access gate.
+The local workspace makes no account, configuration, or sync API requests. Logging, navigation, patterns, inventory, and backups run locally. Cached public navigation uses the app shell without fetching a new page. Browsers can still check for service-worker updates, and a changed release downloads a new shell; clearing or evicting the cache requires another download. Literal zero network traffic across every browser lifecycle is not guaranteed. See [MDN's service-worker lifecycle](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers).
 
-Self-registration is closed by default. The owner can enable it in Accounts. Opening access to other people also requires the separate deployment changes described in [deployment and recovery](docs/deployment.md).
+Online sync accounts are invite-only. Choose Sign in for sync if the owner has created an account for you. The owner uses [/admin](https://daymark.lasers.app/admin), protected by owner-only Cloudflare Access, to create accounts and share initial credentials privately. There is no invitation or password recovery email. Users can change passwords in Settings; the owner can reset passwords and deactivate accounts. Public self-registration is disabled by the server.
+
+Signing in opens that account's separate history. It never uploads the local workspace automatically. Signing out returns to the local workspace and preserves account history on the device. To move history, export a backup, open the destination workspace, enable "Import from another workspace" in Settings, and import the file. Imported history in an account is then eligible to sync.
 
 ## Appearance and layout
 
-The gear opens quick controls for System, Light, or Dark appearance and Automatic, Compact, or Wide layout. All settings opens the account and backup controls. These preferences stay on the device and work offline. Sync now is available after sign-in when the local account is ready and the browser is online.
+The gear opens quick controls for System, Light, or Dark appearance and Automatic, Compact, or Wide layout. All settings opens the local workspace or account and backup controls. These preferences stay on the device and work offline. Sync now is available after sign-in when the local account is ready and the browser is online.
 
 Automatic follows the window width. Compact caps the app at phone width, with stacked weekly labels and phone-sized dialogs. Wide uses desktop spacing and columns; on smaller screens the main content scrolls horizontally while the gear and navigation remain reachable. Choose Automatic to return to the normal responsive layout. The same choices are available in the full Settings screen.
 
@@ -47,7 +51,7 @@ npm run db:local
 npm run dev
 ```
 
-Open http://localhost:5184/admin and create a local owner account. The local owner email is `owner@example.com`; Wrangler simulates the Access identity. Local data and credentials are independent of production. `npm run dev` serves a built client; restart it after client changes.
+Open http://localhost:5184 to use the local workspace. For account testing, open http://localhost:5184/admin and create a local owner account. The local owner email is `owner@example.com`; Wrangler simulates the Access identity. Local data and credentials are independent of production. `npm run dev` serves a built client; restart it after client changes.
 
 Run the same checks used by CI:
 
@@ -61,7 +65,7 @@ The GitHub repository is private and GitHub Actions is disabled at the repositor
 
 ## Data and operational limits
 
-Browser history is stored per account in IndexedDB. Settings exports a JSON backup; importing a backup merges its operations into the same account. Treat backups as private activity history. Offline storage remains on the device after sign-out, so use a trusted browser profile. Browser storage eviction or clearing site data can remove unsynced changes; export a backup before clearing storage. Daymark requests no notification, location, or camera permissions.
+Browser history is stored in isolated local and account workspaces in IndexedDB. Settings exports a complete JSON backup, including tracker definitions, archived records, inventory, stock changes, activity, and conflict history. Imports validate the operation graph and merge atomically without replacing existing edits; repeated imports do not duplicate operations. A backup from another workspace requires the explicit import checkbox. Appearance and layout preferences stay on the device and are not included. Treat backups as private activity history. Offline storage remains on the device after sign-out, so use a trusted browser profile. Browser storage eviction or clearing site data can remove unsynced changes; export a backup before clearing storage. Daymark requests no notification, location, or camera permissions.
 
 The server retains an append-only activity history. Archiving a tracker and removing a slot preserve its history. V1 has no reminders, push notifications, shared trackers, automatic pruning, or scheduled backup export. Times are displayed in the viewing device's local time; the recorded calendar day stays fixed. Editing notes preserves the original instant, and changing an ambiguous daylight-saving time offers a choice between its first and second occurrence.
 
