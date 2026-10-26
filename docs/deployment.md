@@ -10,7 +10,7 @@ Native app sessions use Better Auth, secure HttpOnly cookies in production, data
 
 ## Secrets and provisioning
 
-Supply `AUTH_SECRET` (at least 32 random bytes encoded as a string) and `OWNER_EMAIL` through Wrangler secrets, never tracked variables. Keep a protected, structured recovery copy in your automation credential store. Secret rotation invalidates app sessions; retain the D1 database and users when rotating. Cloudflare API credentials are needed only on the deployment machine, not in the app.
+Supply `AUTH_SECRET` (at least 32 random bytes encoded as a string) and `OWNER_EMAIL` through Wrangler secrets, never tracked variables. Keep a protected, structured recovery copy in your automation credential store. Secret rotation invalidates app sessions; retain the D1 database and users when rotating. Cloudflare API credentials belong to the release environment or operator machine, outside the application.
 
 For a new installation, create the D1 database, set its identifier in Wrangler, create the owner-only Access applications for `/admin` and `/api/admin` and their exact allow policies, then set issuer and admin audience variables before attaching the Custom Domain. Provision secrets with `npx wrangler secret bulk <protected-json-file>` using an object whose keys are `AUTH_SECRET` and `OWNER_EMAIL`. Never print or commit that file.
 
@@ -22,7 +22,25 @@ npx wrangler d1 migrations apply daymark --remote
 npx wrangler deploy
 ```
 
-Apply schema migrations before deploying code that requires them. The dry-run output is kept outside the static asset directory. The deployment command builds from local source; deploy the clean, tested integration branch and retain Wrangler's version ID in the release evidence. Do not attach a public test hostname to bypass Access.
+These commands provision or recover an installation under explicit operator approval. Apply schema migrations before deploying code that requires them, after reviewing the entire pending set. The dry-run output is kept outside the static asset directory. Deploy clean, tested source and retain Wrangler's version ID in the release evidence. Do not attach a public test hostname to bypass Access. Routine releases use the automated flow below.
+
+## Automated production releases
+
+The Verify and deploy workflow verifies pull requests and pushes. A successful push to protected `main`, or a manual workflow dispatch on protected `main`, automatically starts the production release. It is restricted to `j-256/daymark`. The `production` environment has no required reviewer; routine releases need no browser approval. Use `gh workflow run ci.yml --ref main` to request verification and deployment from the terminal.
+
+Configure the `production` environment's Actions secret `CLOUDFLARE_API_TOKEN` and Actions variable `CLOUDFLARE_ACCOUNT_ID`. The token needs account-scoped Workers Scripts Write and D1 Edit, also called D1 Write in the API. Scope it to the owning account. The release uploads a Worker version and activates that exact version, leaving existing routes and the Custom Domain unchanged. It does not require Zone Workers Routes Write. Initial provisioning and intentional route changes still require the operator's appropriate zone permission. See [Workers authorization](https://developers.cloudflare.com/workers/authorization/workers/) and [GitHub Actions deployment](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/).
+
+The verification job runs the complete verification command, then hashes the compiled Worker, static assets including hidden exclusion files, configuration, and migration inputs into an artifact receipt bound to its source revision. The release job downloads that run's artifact and checks every digest and the exact file set before production mutation. It uploads the compiled entry point with `--no-bundle`, uses the verified asset directory, and sets the existing `BUILD_ID` variable to the source revision. Application secrets remain in Cloudflare. Production credentials are available only to the release step, and pull request jobs receive none.
+
+Main workflows and production jobs are serialized without automatically cancelling an active release. A newer push can replace a pending run; GitHub concurrency does not promise a FIFO release queue. Source checks before migration writes, upload, and activation reject a revision that has been superseded on protected `main`. Do not manually cancel a release during database writes without inspecting its resulting state.
+
+The migration preflight reads only migration filenames and requires a contiguous prefix of the reviewed manifest. Unknown history or pending manual migrations stop the release. Pending automatic migrations require a recorded Time Travel bookmark, successful migration application, and a complete applied-history readback before upload. An empty pending set performs no D1 writes or bookmark work. Migration review and recovery requirements are documented in [Database migrations](migrations.md).
+
+Wrangler's structured upload record must identify exactly one version of `daymark`; activation uses that version ID explicitly. The release checks the active deployment, public shell, exact `/api/config` build revision, closed registration and rejected public signup, anonymous rejection by sync and health endpoints, and owner Access redirects on administration paths. Read-only checks allow a bounded propagation window. These probes do not establish authenticated database health or account synchronization; complete the account acceptance checks below when account behavior changes.
+
+The Actions job summary and release-report artifact record the source revision, stage, timings, pending migration names, recovery bookmark when applicable, and uploaded Worker version. Smoke diagnostics include request IDs and statuses without account data. Release reports expire after seven days; verified build artifacts expire after one day. Download any evidence needed for a longer recovery record. D1's recovery retention is independent of GitHub artifact retention. No production SQL export is uploaded to Actions.
+
+On a failed migration, stop and inspect applied history before retrying; earlier successful migrations can remain applied. On upload or activation failure, inspect provider versions and the active deployment before retrying an uncertain write. A failed smoke check retains the activated version in its report and does not trigger an automatic rollback or database restore. Prefer a compatible forward fix. Any database restore is a separately approved operation because it overwrites later writes. For an approved code rollback, select a version compatible with the deployed schema and preserve the recorded recovery information.
 
 The build removes Finder metadata before generating the offline shell. The release configuration check rejects unexpected files in the static artifact, and `.assetsignore` excludes root and nested `.DS_Store` files even if Finder creates them after verification. Cloudflare documents this exclusion format in [Ignoring assets](https://developers.cloudflare.com/workers/static-assets/binding/#ignoring-assets), checked on 2026-10-24.
 
@@ -30,7 +48,7 @@ After deploying, read back the hostname, Worker, D1 binding, admin Access applic
 
 ## Public local release and Access transition
 
-Source integration does not deploy the Worker or remove a provider Access application. Release the public-local build before removing the blanket gate:
+Integration into protected `main` triggers release verification and deployment. Provider Access policy changes remain separate operator actions. When performing a public-local Access transition, release the compatible build before removing the blanket gate:
 
 1. Verify the clean integration branch and deploy it with `ACCESS_REQUIRED=false`; retain owner-only admin Access applications and the separate admin audience
 2. Verify that the public signup route rejects registration even when an older `app_settings` record says `open`, and that the owner can still create an invited account
@@ -72,4 +90,4 @@ Official limits were checked on 2026-10-24. This application uses no Queues, Dur
 
 A reorder can create an operation for each tracker in the displayed list when ranks need normalization. The browser persists the group atomically; server uploads use the same bounded batches as logging. Count each generated operation in D1 workload estimates rather than treating a reorder as a single row.
 
-The deployed account may use Workers Paid for reliable native password authentication. GitHub Actions runs verification independently of Cloudflare deployment and has no production credentials. The local integration queue runs the same verification command before publishing approved changes; GitHub branch protection also requires the hosted `verify` check before merging.
+The deployed account may use Workers Paid for reliable native password authentication. GitHub Actions verification has no production credentials; the separate release job receives environment credentials only after verification of protected `main`. The local integration queue runs the same verification command before publishing approved changes; GitHub branch protection also requires the hosted `verify` check before merging. Release smoke checks add at most approximately fifty Worker requests per release under the bounded retry policy, including anonymous authentication rejection and Access-boundary probes. Count these with normal application traffic when estimating Free-plan request usage. Migration SQL has workload-dependent D1 costs and duration; local tests and a successful Worker dry run do not establish production D1 quota compatibility.

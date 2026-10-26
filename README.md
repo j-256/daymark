@@ -61,7 +61,9 @@ npm run verify
 
 This checks formatting, TypeScript, domain and storage behavior, native authentication against local D1, browser flows, the built offline shell, production configuration, a Worker deployment dry run, and dependency security advisories. Linux CI also installs Chromium's system dependencies with `npx playwright install --with-deps chromium`.
 
-The GitHub repository is public. The Verify workflow runs on pushes, pull requests, and manual dispatch, using Node 24 and Chromium on Linux. CI has no deployment credentials or automatic deploy job. Changes to `main` require a pull request and a passing `verify` check. The local integration queue also runs `npm run verify` before publishing an approved task and follows GitHub's branch protection when merging.
+The GitHub repository is public. The Verify and deploy workflow runs on pushes, pull requests, and manual dispatch, using Node 24 and Chromium on Linux. Changes to `main` require a pull request and a passing `verify` check. The local integration queue also runs `npm run verify` before publishing an approved task and follows GitHub's branch protection when merging.
+
+Verified changes to protected `main` deploy automatically through the `production` environment, without a separate deployment reviewer. Only the release step receives production credentials. It validates the verified build, checks migration history, records a recovery bookmark when needed, applies reviewed compatible migrations, and activates the exact uploaded Worker version. Pending manual migrations stop the release. See [deployment and recovery](docs/deployment.md) and [migration authoring](docs/migrations.md).
 
 ## Data and operational limits
 
