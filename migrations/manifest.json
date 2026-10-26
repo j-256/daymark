@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "migrations": [
+    {
+      "name": "0001_auth.sql",
+      "sha256": "a3ecafed1370f428968a5569a5c87969f83c31cd0787b1d210e5b1aa519c703b",
+      "mode": "manual"
+    },
+    {
+      "name": "0002_operations.sql",
+      "sha256": "00e153d24fd893726dd368d90a8e3f0a6003232430a7284cad6855f48eaa21be",
+      "mode": "manual"
+    }
+  ]
+}
