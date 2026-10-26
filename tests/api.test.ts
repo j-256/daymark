@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises";
 import { convertV4MiniflareOptions, Miniflare } from "miniflare";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAuth } from "../worker/auth";
 import worker from "../worker/index";
 import type { Env } from "../worker/types";
+import { applyMigrations } from "./helpers/migrations";
 
 let runtime: Miniflare;
 let env: Env;
@@ -64,14 +64,7 @@ beforeAll(async () => {
     }),
   );
   const db = await runtime.getD1Database("DB");
-  for (const file of ["migrations/0001_auth.sql", "migrations/0002_operations.sql"]) {
-    const sql = await readFile(file, "utf8");
-    for (const statement of sql
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean))
-      await db.prepare(statement).run();
-  }
+  await applyMigrations(db as unknown as D1Database);
   env = {
     DB: db as unknown as D1Database,
     ASSETS: { fetch: async () => new Response("asset") } as unknown as Fetcher,
