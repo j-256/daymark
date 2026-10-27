@@ -12,11 +12,12 @@ import {
   RefreshCw,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { message } from "./client/api";
 import { applyAppearance, preference, THEME_KEY } from "./client/appearance";
 import { consumptionFor, stockBalances } from "./client/inventory";
 import { applyLayout, LAYOUT_KEY, type Layout, layoutPreference } from "./client/layout";
+import { isAdminPath, useNavigation } from "./client/navigation";
 import { type MoveDirection, reorderChanges } from "./client/ordering";
 import { useDaymark } from "./client/useDaymark";
 import { useRecovery } from "./client/useRecovery";
@@ -43,14 +44,16 @@ import {
 } from "./components/Views";
 import { type Entry, entryKey, localDay, materialize, type Tracker } from "./shared/model";
 
-type Tab = "today" | "weeks" | "patterns" | "trackers" | "inventory" | "settings";
 interface Toast {
   text: string;
   undo?: () => Promise<void>;
 }
 export function App() {
   const daymark = useDaymark();
-  const [tab, setTab] = useState<Tab>("today");
+  const { tab, navigate } = useNavigation();
+  const admin = isAdminPath(location.pathname);
+  const previousAccount = useRef(daymark.account?.id);
+  const previousTab = useRef(tab);
   const [theme, setTheme] = useState<Theme>(preference);
   const [layout, setLayout] = useState<Layout>(layoutPreference);
   const [trackerEdit, setTrackerEdit] = useState<TrackerItem | "new" | null>(null);
@@ -129,8 +132,7 @@ export function App() {
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
   }, [theme]);
-  useEffect(() => {
-    if (!daymark.account?.id && daymark.loading) return;
+  const closePanels = useCallback(() => {
     setTrackerEdit(null);
     setEntryEdit(null);
     setHistory(null);
@@ -138,12 +140,23 @@ export function App() {
     setSyncDetails(false);
     setExtraPicker(false);
     setLogin(false);
+  }, []);
+  useEffect(() => {
+    if (previousTab.current !== tab) {
+      previousTab.current = tab;
+      closePanels();
+    }
+  }, [tab, closePanels]);
+  useEffect(() => {
+    if (!daymark.account?.id && daymark.loading) return;
+    closePanels();
     setToast(null);
     setCategory("");
-    setTab(location.hash === "#settings" ? "settings" : "today");
-    if (!daymark.loading && location.hash === "#settings")
-      window.history.replaceState(null, "", location.pathname + location.search);
-  }, [daymark.account?.id, daymark.loading]);
+    if (previousAccount.current !== daymark.account?.id) {
+      previousAccount.current = daymark.account?.id;
+      navigate("today", { replace: true });
+    }
+  }, [daymark.account?.id, daymark.loading, closePanels, navigate]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 6000);
@@ -271,7 +284,7 @@ export function App() {
               type="button"
               className="sync-chip"
               data-testid="local-status"
-              onClick={() => setTab("settings")}
+              onClick={() => navigate("settings")}
             >
               <HardDrive />
               <span>On this device</span>
@@ -298,6 +311,7 @@ export function App() {
           </button>
         )}
         <QuickSettings
+          view={tab}
           theme={theme}
           setTheme={setTheme}
           layout={layout}
@@ -306,17 +320,13 @@ export function App() {
           syncing={daymark.sync.status === "syncing"}
           sync={() => void daymark.synchronize()?.catch((error) => notify(message(error)))}
           canOpenSettings={Boolean(daymark.store)}
-          allSettings={() => {
-            if (location.pathname === "/admin" || location.pathname.startsWith("/admin/"))
-              location.assign("/#settings");
-            else setTab("settings");
-          }}
+          allSettings={() => navigate("settings")}
         />
       </header>
-      {daymark.store && tab !== "settings" && !location.pathname.startsWith("/admin") && (
-        <RecoveryNotice recovery={recovery} open={() => setTab("settings")} />
+      {daymark.store && tab !== "settings" && !admin && (
+        <RecoveryNotice recovery={recovery} open={() => navigate("settings")} />
       )}
-      {location.pathname === "/admin" || location.pathname.startsWith("/admin/") ? (
+      {admin ? (
         <Admin daymark={daymark} />
       ) : daymark.loading && !daymark.account ? (
         <main className="view">
@@ -367,7 +377,11 @@ export function App() {
                   </div>
                 )}
               {tab === "today" && lowStock.length > 0 && (
-                <button type="button" className="stock-notice" onClick={() => setTab("inventory")}>
+                <button
+                  type="button"
+                  className="stock-notice"
+                  onClick={() => navigate("inventory")}
+                >
                   {lowStock.length} medication{lowStock.length === 1 ? "" : "s"} low on stock
                 </button>
               )}
@@ -434,7 +448,7 @@ export function App() {
                 key={item.id}
                 type="button"
                 aria-current={tab === item.id ? "page" : undefined}
-                onClick={() => setTab(item.id)}
+                onClick={() => navigate(item.id)}
               >
                 <item.icon />
                 {item.label}

@@ -282,6 +282,9 @@ test("reorders directly with up and down controls and retains an offline move af
   await page.getByRole("button", { name: "Move Second up", exact: true }).click();
   await expect(page.locator(".tracker-row").first()).toContainText("Second");
   await page.reload();
+  await expect(page).toHaveURL(`${ORIGIN}/#trackers`);
+  await expect(page.locator(".tracker-row").first()).toContainText("Second");
+  await page.getByRole("button", { name: "Today", exact: true }).click();
   await expect(page.locator(".log-row").first()).toContainText("Second");
   await page.context().setOffline(false);
   await expect(page.getByTestId("sync-status")).toHaveText(/Synced/);

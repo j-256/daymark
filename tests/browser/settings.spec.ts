@@ -37,6 +37,7 @@ async function signIn(page: Page, request: APIRequestContext) {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByTestId("sync-status")).toHaveText("Synced");
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  return email;
 }
 const gear = (page: Page) => page.getByRole("button", { name: "Settings", exact: true });
 const popup = (page: Page) => page.getByRole("dialog", { name: "Quick settings", exact: true });
@@ -170,5 +171,32 @@ test("All settings leaves the admin route for the full app settings", async ({ p
   await gear(page).click();
   await popup(page).getByRole("button", { name: "All settings...", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-  await expect(page).toHaveURL(`${ORIGIN}/`);
+  await expect(page).toHaveURL(`${ORIGIN}/#settings`);
+});
+
+test("preserves account deep links on reload and updates the route on account switches", async ({
+  page,
+  request,
+}) => {
+  const email = await signIn(page, request);
+  await expect(page).toHaveURL(`${ORIGIN}/#today`);
+  await page.getByRole("button", { name: "Weeks", exact: true }).click();
+  await expect(page).toHaveURL(`${ORIGIN}/#weeks`);
+  await page.reload();
+  await expect(page.locator("main.view")).toHaveAttribute("id", "weeks");
+  await expect(page).toHaveURL(`${ORIGIN}/#weeks`);
+  await gear(page).click();
+  await popup(page).getByRole("button", { name: "All settings...", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByTestId("local-status")).toBeVisible();
+  await expect(page).toHaveURL(`${ORIGIN}/#today`);
+  await gear(page).click();
+  await popup(page).getByRole("button", { name: "All settings...", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in for sync", exact: true }).first().click();
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByTestId("sync-status")).toHaveText("Synced");
+  await expect(page.locator("main.view")).toHaveAttribute("id", "today");
+  await expect(page).toHaveURL(`${ORIGIN}/#today`);
 });
