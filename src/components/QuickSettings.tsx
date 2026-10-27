@@ -1,11 +1,13 @@
 import { RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { Layout } from "../client/layout";
+import type { Tab } from "../client/navigation";
 import type { Theme } from "./Settings";
 
 const EDGE_SPACE = 8;
 const MENU_GAP = 6;
 export function QuickSettings({
+  view,
   theme,
   setTheme,
   layout,
@@ -16,6 +18,7 @@ export function QuickSettings({
   canOpenSettings,
   allSettings,
 }: {
+  view: Tab;
   theme: Theme;
   setTheme: (theme: Theme) => void;
   layout: Layout;
@@ -29,7 +32,15 @@ export function QuickSettings({
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const previousView = useRef(view);
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (previousView.current === view) return;
+    previousView.current = view;
+    const menu = panel.current;
+    if (!menu?.matches(":popover-open")) return;
+    menu.hidePopover();
+  }, [view]);
   const position = useCallback(() => {
     const trigger = button.current?.getBoundingClientRect();
     const menu = panel.current;
