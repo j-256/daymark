@@ -18,6 +18,7 @@ export const LIMITS = Object.freeze({
   parents: 100,
   slots: 8,
   backup: 20000000,
+  backupOperations: 50000,
 });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const IDENTIFIER = /^[a-zA-Z0-9_-]{1,80}$/;

@@ -19,6 +19,7 @@ import { consumptionFor, stockBalances } from "./client/inventory";
 import { applyLayout, LAYOUT_KEY, type Layout, layoutPreference } from "./client/layout";
 import { type MoveDirection, reorderChanges } from "./client/ordering";
 import { useDaymark } from "./client/useDaymark";
+import { useRecovery } from "./client/useRecovery";
 import { Admin } from "./components/Admin";
 import { Conflicts } from "./components/Conflicts";
 import { EntryForm, type EntrySelection } from "./components/EntryForm";
@@ -27,6 +28,7 @@ import { Inventory } from "./components/Inventory";
 import { Login } from "./components/Login";
 import { Patterns } from "./components/Patterns";
 import { QuickSettings } from "./components/QuickSettings";
+import { RecoveryNotice } from "./components/Recovery";
 import { Settings, type Theme } from "./components/Settings";
 import { TrackerForm, type TrackerItem } from "./components/TrackerForm";
 import { ErrorMessage, Sheet } from "./components/ui";
@@ -148,6 +150,7 @@ export function App() {
     return () => clearTimeout(timer);
   }, [toast]);
   const notify = (text: string) => setToast({ text });
+  const recovery = useRecovery(daymark, notify);
   const mark = async (row: TrackerRow, day: string, cycle: boolean) => {
     const key = entryKey(row.trackerId, day, row.slot.id);
     if (busy === key) return;
@@ -310,6 +313,9 @@ export function App() {
           }}
         />
       </header>
+      {daymark.store && tab !== "settings" && !location.pathname.startsWith("/admin") && (
+        <RecoveryNotice recovery={recovery} open={() => setTab("settings")} />
+      )}
       {location.pathname === "/admin" || location.pathname.startsWith("/admin/") ? (
         <Admin daymark={daymark} />
       ) : daymark.loading && !daymark.account ? (
@@ -402,6 +408,7 @@ export function App() {
               )}
               {tab === "settings" && (
                 <Settings
+                  recovery={recovery}
                   daymark={daymark}
                   theme={theme}
                   setTheme={setTheme}
