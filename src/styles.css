@@ -778,6 +778,23 @@ legend {
   font-size: 12px;
   margin: 8px 0;
 }
+.recovery-notice {
+  margin: 4px 12px 8px;
+  flex-shrink: 0;
+}
+.recovery-notice > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.recovery-notice button {
+  min-height: 36px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+}
 .toast {
   position: absolute;
   bottom: calc(66px + env(safe-area-inset-bottom));
@@ -859,6 +876,21 @@ details summary::before {
 }
 details[open] summary::before {
   content: "-";
+}
+.storage-protection-guidance {
+  margin: 10px 0 12px;
+}
+.storage-protection-guidance .hint {
+  margin: 0;
+  font-size: 13px;
+}
+.storage-protection-guidance summary {
+  min-height: 36px;
+}
+.storage-protection-guidance details summary::before {
+  order: 1;
+  padding-right: 0;
+  margin-left: 8px;
 }
 .login {
   padding: 26px 4px;

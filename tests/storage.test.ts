@@ -23,6 +23,7 @@ describe("durable account storage", () => {
     const target = await store();
     await source.write("entry", key, empty);
     const backup = await source.backup();
+    delete backup.integrity;
     await expect(target.importBackup(backup)).rejects.toThrow(/account|workspace/i);
     expect(await target.list()).toEqual([]);
     expect(await target.importBackup(backup, { allowDifferentWorkspace: true })).toBe(1);
@@ -370,4 +371,131 @@ it("isolates legacy tabs while importing later unsynced edits without losing con
   const reopened = await store(id);
   expect((await reopened.pending()).map((op) => op.id)).not.toContain(oldEdit.id);
   legacy.close();
+});
+
+describe("checked recovery copies", () => {
+  it("records complete coverage and leaves newer edits and older checkpoints intact", async () => {
+    const s = await store();
+    await s.write("entry", key, empty);
+    const old = await s.backup();
+    const checked = await s.checkBackup(old);
+    expect(checked).toEqual({ missing: 0, total: 1, recorded: true });
+    expect(await s.recovery()).toMatchObject({
+      operationCount: 1,
+      remindAfter: 0,
+      available: true,
+    });
+    await s.write("entry", key, { ...empty, state: "confirmed" });
+    expect(await s.checkBackup(old)).toEqual({ missing: 1, total: 2, recorded: false });
+    const complete = await s.backup();
+    await s.checkBackup(complete);
+    const checkpoint = await s.recovery();
+    await s.checkBackup(old);
+    expect(await s.recovery()).toEqual(checkpoint);
+    expect(await s.list()).toEqual(complete.operations);
+    expect(await s.cursor()).toBe(0);
+  });
+  it("compares actual IDs and values rather than trusting the file's operation count", async () => {
+    const s = await store();
+    await s.write("entry", key, empty);
+    const backup = await s.backup();
+    delete backup.integrity;
+    const unrelated = {
+      ...backup,
+      operations: [{ ...backup.operations[0], id: crypto.randomUUID() }],
+    };
+    expect((await s.checkBackup(unrelated)).missing).toBe(1);
+    expect((await s.recovery()).checkedAt).toBe(0);
+    const changed = {
+      ...backup,
+      operations: [{ ...backup.operations[0], value: { ...empty, note: "different" } }],
+    };
+    await expect(s.checkBackup(changed)).rejects.toThrow(/conflicting/i);
+    expect(await s.list()).toEqual(backup.operations);
+  });
+  it("isolates checkpoints and postponement and retains them across reopening", async () => {
+    const a = await store();
+    const b = await store();
+    await a.write("entry", key, empty);
+    const backup = await a.backup();
+    await a.checkBackup(backup);
+    await a.postponeBackup(1000);
+    const recovery = await a.recovery();
+    expect(recovery.remindAfter).toBe(1000 + 86400000);
+    expect((await b.recovery()).checkedAt).toBe(0);
+    await expect(b.checkBackup(backup)).rejects.toThrow(/workspace/i);
+    a.close();
+    expect(await (await store(a.accountId)).recovery()).toEqual(recovery);
+  });
+  it("can check and export history when recording reminder metadata fails", async () => {
+    const s = await store();
+    await s.write("entry", key, empty);
+    const backup = await s.backup();
+    const original = IDBObjectStore.prototype.put;
+    const spy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+      this: IDBObjectStore,
+      value: unknown,
+      key?: IDBValidKey,
+    ) {
+      if (this.name === "meta") throw new DOMException("Storage full", "QuotaExceededError");
+      return original.call(this, value, key);
+    });
+    try {
+      expect(await s.checkBackup(backup)).toEqual({ missing: 0, total: 1, recorded: false });
+      expect((await s.recovery()).checkedAt).toBe(0);
+      expect((await s.backup()).operations).toEqual(backup.operations);
+      await s.write("entry", key, { ...empty, state: "confirmed" });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await s.list()).toHaveLength(2);
+  });
+  it("reports a valid file even when a metadata failure has already aborted its transaction", async () => {
+    const s = await store();
+    await s.write("entry", key, empty);
+    const backup = await s.backup();
+    const original = IDBObjectStore.prototype.put;
+    const spy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+      this: IDBObjectStore,
+      value: unknown,
+      key?: IDBValidKey,
+    ) {
+      if (this.name === "meta") {
+        this.transaction.abort();
+        throw new DOMException("Storage full", "QuotaExceededError");
+      }
+      return original.call(this, value, key);
+    });
+    try {
+      expect(await s.checkBackup(backup)).toEqual({ missing: 0, total: 1, recorded: false });
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await s.recovery()).checkedAt).toBe(0);
+    expect(await s.list()).toEqual(backup.operations);
+  });
+  it("settles failed recovery reads without an unhandled transaction rejection", async () => {
+    const s = await store();
+    const original = IDBObjectStore.prototype.get;
+    let abortScheduled = false;
+    const spy = vi.spyOn(IDBObjectStore.prototype, "get").mockImplementation(function (
+      this: IDBObjectStore,
+      key: IDBValidKey | IDBKeyRange,
+    ) {
+      const request = original.call(this, key);
+      if (this.name === "meta" && !abortScheduled) {
+        abortScheduled = true;
+        queueMicrotask(() => this.transaction.abort());
+      }
+      return request;
+    });
+    try {
+      expect(await s.recovery()).toMatchObject({ available: false, checkedAt: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      spy.mockRestore();
+    }
+    await s.write("entry", key, empty);
+    expect((await s.backup()).operations).toHaveLength(1);
+  });
 });

@@ -1,9 +1,23 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { canonical, type Kind, type Operation, operation, type Value } from "../shared/model";
 import { validateOperation } from "../shared/validation";
+import { type Backup, causalOrder, createBackup, validateBackup } from "./backup";
+
+export type { Backup } from "./backup";
 
 export const LOCAL_WORKSPACE_ID = "local-workspace";
-const MAX_BACKUP_OPERATIONS = 50000;
+export const BACKUP_REMINDER_INTERVAL = 24 * 60 * 60 * 1000;
+const RECOVERY_KEYS = Object.freeze({
+  checkedAt: "backup-checked-at",
+  operationCount: "backup-operation-count",
+  remindAfter: "backup-remind-after",
+});
+export interface Recovery {
+  checkedAt: number;
+  operationCount: number;
+  remindAfter: number;
+  available: boolean;
+}
 
 interface Stored {
   id: string;
@@ -24,39 +38,6 @@ export interface RemoteOperation {
   seq: number;
   operation: Operation;
 }
-export interface Backup {
-  format: "daymark";
-  version: 1;
-  accountId: string;
-  exportedAt: string;
-  operations: Operation[];
-}
-
-export function causalOrder(operations: Operation[], known?: Set<string>): Operation[] {
-  const byId = new Map(operations.map((op) => [op.id, op]));
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const result: Operation[] = [];
-  const visit = (op: Operation) => {
-    if (visited.has(op.id)) return;
-    if (visiting.has(op.id)) throw new Error("Cyclic operation history");
-    visiting.add(op.id);
-    for (const parent of op.parents) {
-      const previous = byId.get(parent);
-      if (previous) {
-        if (previous.kind !== op.kind || previous.key !== op.key)
-          throw new Error("Parent belongs to a different record");
-        visit(previous);
-      } else if (known && !known.has(parent)) throw new Error("Incomplete operation history");
-    }
-    visiting.delete(op.id);
-    visited.add(op.id);
-    result.push(op);
-  };
-  for (const op of operations) visit(op);
-  return result;
-}
-
 const STORAGE_PREFIX = "daymark-v2-";
 const LEGACY_STORAGE_PREFIX = "daymark-v1-";
 
@@ -218,38 +199,87 @@ export class Store {
     this.notify();
   }
   async backup(): Promise<Backup> {
-    return {
-      format: "daymark",
-      version: 1,
-      accountId: this.accountId,
-      exportedAt: new Date().toISOString(),
-      operations: await this.list(),
-    };
+    return createBackup(this.accountId, await this.list());
+  }
+  async recovery(): Promise<Recovery> {
+    let completion: Promise<void> | undefined;
+    try {
+      const tx = this.db.transaction("meta");
+      completion = tx.done;
+      const [checkedAt, operationCount, remindAfter] = await Promise.all(
+        Object.values(RECOVERY_KEYS).map((key) => tx.store.get(key)),
+      );
+      await tx.done;
+      return {
+        checkedAt: checkedAt ?? 0,
+        operationCount: operationCount ?? 0,
+        remindAfter: remindAfter ?? 0,
+        available: true,
+      };
+    } catch {
+      await completion?.catch(() => {});
+      return { checkedAt: 0, operationCount: 0, remindAfter: 0, available: false };
+    }
+  }
+  async postponeBackup(now = Date.now()): Promise<void> {
+    await this.db.put("meta", now + BACKUP_REMINDER_INTERVAL, RECOVERY_KEYS.remindAfter);
+    this.notify();
+  }
+  async checkBackup(
+    input: unknown,
+  ): Promise<{ missing: number; total: number; recorded: boolean }> {
+    const backup = await validateBackup(input);
+    if (backup.accountId !== this.accountId)
+      throw new Error("This backup belongs to another workspace. Open that workspace to check it.");
+    await this.importLegacy();
+    const byId = new Map(backup.operations.map((op) => [op.id, canonical(op)]));
+    const tx = this.db.transaction(["operations", "meta"], "readwrite");
+    let total = 0;
+    let missing = 0;
+    let recorded = false;
+    try {
+      const rows = await tx.objectStore("operations").getAll();
+      total = rows.length;
+      for (const row of rows) {
+        const saved = byId.get(row.id);
+        if (saved && saved !== canonical(row.operation))
+          throw new Error("Conflicting operation ID in backup");
+        if (!saved) missing++;
+      }
+      if (!missing && total) {
+        const meta = tx.objectStore("meta");
+        try {
+          await meta.put(Date.now(), RECOVERY_KEYS.checkedAt);
+          await meta.put(total, RECOVERY_KEYS.operationCount);
+          await meta.put(0, RECOVERY_KEYS.remindAfter);
+          recorded = true;
+        } catch {
+          try {
+            tx.abort();
+          } catch {}
+          await tx.done.catch(() => {});
+          return { missing, total, recorded: false };
+        }
+      }
+      await tx.done;
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {}
+      await tx.done.catch(() => {});
+      throw error;
+    }
+    this.notify();
+    return { missing, total, recorded };
   }
   async importBackup(
     input: unknown,
     options: { allowDifferentWorkspace?: boolean } = {},
   ): Promise<number> {
-    if (
-      !input ||
-      typeof input !== "object" ||
-      !("format" in input) ||
-      input.format !== "daymark" ||
-      !("version" in input) ||
-      input.version !== 1 ||
-      !("accountId" in input) ||
-      typeof input.accountId !== "string" ||
-      !input.accountId ||
-      (input.accountId !== this.accountId && options.allowDifferentWorkspace !== true)
-    )
+    const backup = await validateBackup(input);
+    if (backup.accountId !== this.accountId && options.allowDifferentWorkspace !== true)
       throw new Error("This backup belongs to another workspace or uses an unsupported format");
-    if (
-      !("operations" in input) ||
-      !Array.isArray(input.operations) ||
-      input.operations.length > MAX_BACKUP_OPERATIONS
-    )
-      throw new Error("Invalid or oversized backup");
-    const imported = input.operations.map(validateOperation);
+    const imported = backup.operations;
     const tx = this.db.transaction("operations", "readwrite");
     let added = 0;
     try {

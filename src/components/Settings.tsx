@@ -1,9 +1,10 @@
-import { Download, LogOut, ShieldCheck, Upload } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { api, message } from "../client/api";
 import type { Layout } from "../client/layout";
 import type { Daymark } from "../client/useDaymark";
-import { LIMITS } from "../shared/validation";
+import type { RecoveryControls } from "../client/useRecovery";
+import { RecoverySettings } from "./Recovery";
 import { ErrorMessage } from "./ui";
 
 export type Theme = "system" | "light" | "dark";
@@ -15,6 +16,7 @@ export function Settings({
   setLayout,
   notify,
   signIn,
+  recovery,
 }: {
   daymark: Daymark;
   theme: Theme;
@@ -23,10 +25,10 @@ export function Settings({
   setLayout: (layout: Layout) => void;
   notify: (text: string) => void;
   signIn: () => void;
+  recovery: RecoveryControls;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [allowDifferentWorkspace, setAllowDifferentWorkspace] = useState(false);
   return (
     <>
       <div className="page-title">
@@ -55,78 +57,7 @@ export function Settings({
           can scroll horizontally. Saved on this device.
         </p>
       </section>
-      <section className="settings-section">
-        <h2>Your data</h2>
-        <button
-          className="list-action"
-          type="button"
-          disabled={!daymark.store}
-          onClick={async () => {
-            try {
-              const backup = await daymark.store?.backup();
-              if (!backup) return;
-              const url = URL.createObjectURL(
-                new Blob([JSON.stringify(backup)], { type: "application/json" }),
-              );
-              const link = document.createElement("a");
-              link.href = url;
-              link.download = `daymark-${new Date().toISOString().slice(0, 10)}.json`;
-              link.click();
-              setTimeout(() => URL.revokeObjectURL(url), 1000);
-              notify("Backup exported");
-            } catch (e) {
-              setError(message(e));
-            }
-          }}
-        >
-          <Download />
-          Export backup
-        </button>
-        <label className="list-action upload-label">
-          <Upload />
-          Import backup
-          <input
-            type="file"
-            accept="application/json,.json"
-            disabled={busy || !daymark.store}
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              setError("");
-              setBusy(true);
-              try {
-                if (file.size > LIMITS.backup)
-                  throw new Error("Backup exceeds the 20 MB import limit");
-                const value = JSON.parse(await file.text());
-                const count = await daymark.store?.importBackup(value, { allowDifferentWorkspace });
-                await daymark.refresh();
-                void daymark.synchronize()?.catch(() => {});
-                notify(`${count ?? 0} edits imported`);
-              } catch (e) {
-                setError(message(e));
-              } finally {
-                setBusy(false);
-                event.target.value = "";
-              }
-            }}
-          />
-        </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={allowDifferentWorkspace}
-            onChange={(event) => setAllowDifferentWorkspace(event.target.checked)}
-          />
-          Import from another workspace
-        </label>
-        <p className="hint">
-          Backups contain trackers, inventory, and complete activity history. Imports merge without
-          replacing edits.{" "}
-          {daymark.account
-            ? "Imported history will sync to this account."
-            : "Data stays on this device. Export backups before clearing browser data."}
-        </p>
-      </section>
+      <RecoverySettings key={daymark.store?.accountId} controls={recovery} />
       {!daymark.account ? (
         <section className="settings-section">
           <h2>Local workspace</h2>
